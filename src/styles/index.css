@@ -1,0 +1,40 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+/* Print styles for receipts */
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Hide everything except the receipt */
+  body > *:not(.print-content) {
+    display: none !important;
+  }
+
+  .print-content {
+    display: block !important;
+  }
+
+  /* Force light mode for printing */
+  * {
+    background: white !important;
+    color: black !important;
+    border-color: #e5e7eb !important;
+  }
+
+  /* Hide buttons and interactive elements */
+  button,
+  nav,
+  aside,
+  header {
+    display: none !important;
+  }
+}
