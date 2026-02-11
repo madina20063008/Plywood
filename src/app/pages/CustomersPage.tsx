@@ -9,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { UserPlus, Edit, Trash2, Users, Search, RefreshCw } from 'lucide-react';
+import { UserPlus, Edit, Trash2, Users, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const CustomersPage: React.FC = () => {
@@ -21,7 +21,7 @@ export const CustomersPage: React.FC = () => {
     deleteCustomer, 
     language, 
     getCustomerBalance,
-    isLoadingCustomers,
+    isFetchingCustomers,
     user
   } = useApp();
   
@@ -29,6 +29,9 @@ export const CustomersPage: React.FC = () => {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -57,7 +60,7 @@ export const CustomersPage: React.FC = () => {
     }
   }, [user]);
 
-  const filteredCustomers = customers; // Search is handled by API
+  const filteredCustomers = customers;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat(language === 'uz' ? 'uz-UZ' : 'ru-RU').format(amount);
@@ -86,6 +89,7 @@ export const CustomersPage: React.FC = () => {
       return;
     }
 
+    setIsAdding(true);
     try {
       await addCustomer({
         name: formData.name,
@@ -100,6 +104,8 @@ export const CustomersPage: React.FC = () => {
       setFormData({ name: '', phone: '', address: '', email: '', notes: '' });
     } catch (error) {
       // Error is already handled in context
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -111,6 +117,7 @@ export const CustomersPage: React.FC = () => {
       return;
     }
 
+    setIsUpdating(true);
     try {
       await updateCustomer(selectedCustomer.id, {
         name: formData.name,
@@ -125,6 +132,8 @@ export const CustomersPage: React.FC = () => {
       setSelectedCustomer(null);
     } catch (error) {
       // Error is already handled in context
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -132,17 +141,27 @@ export const CustomersPage: React.FC = () => {
     if (confirm(language === 'uz' 
       ? `${customer.name} mijozini o'chirmoqchimisiz?` 
       : `Удалить клиента ${customer.name}?`)) {
+      
+      setIsDeleting(customer.id);
       try {
         await deleteCustomer(customer.id);
         toast.success(t('customerDeleted'));
       } catch (error) {
         // Error is already handled in context
+      } finally {
+        setIsDeleting(null);
       }
     }
   };
 
-  const handleRefresh = () => {
-    fetchCustomers(searchTerm);
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
+
+  // Clear search
+  const handleClearSearch = () => {
+    setSearchTerm('');
   };
 
   return (
@@ -160,8 +179,10 @@ export const CustomersPage: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          
-          <Button onClick={handleAddClick} disabled={isLoadingCustomers}>
+          <Button 
+            onClick={handleAddClick} 
+            disabled={isAdding || isUpdating || isDeleting}
+          >
             <UserPlus className="mr-2 h-4 w-4" />
             {t('addCustomer')}
           </Button>
@@ -170,21 +191,21 @@ export const CustomersPage: React.FC = () => {
 
       {/* Stats Card */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-blue-600" />
-            <CardTitle>{language === 'uz' ? 'Statistika' : 'Статистика'}</CardTitle>
+            <CardTitle className="text-lg">{language === 'uz' ? 'Statistika' : 'Статистика'}</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1">
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {language === 'uz' ? 'Jami mijozlar' : 'Всего клиентов'}
               </p>
               <p className="text-2xl font-bold">{customers.length}</p>
             </div>
-            <div>
+            <div className="space-y-1">
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {language === 'uz' ? 'Qarzdor mijozlar' : 'Клиенты с долгом'}
               </p>
@@ -195,43 +216,82 @@ export const CustomersPage: React.FC = () => {
                 }).length}
               </p>
             </div>
+            <div className="space-y-1">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {language === 'uz' ? 'Aktiv mijozlar' : 'Активные клиенты'}
+              </p>
+              <p className="text-2xl font-bold text-green-600">
+                {customers.filter(c => {
+                  const balance = getCustomerBalance(c.id);
+                  return balance.balance === 0;
+                }).length}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {language === 'uz' ? 'Umumiy qarz' : 'Общий долг'}
+              </p>
+              <p className="text-2xl font-bold text-red-600">
+                {formatCurrency(customers.reduce((sum, c) => {
+                  const balance = getCustomerBalance(c.id);
+                  return sum + balance.balance;
+                }, 0))} {language === 'uz' ? "so'm" : "сум"}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Search */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('search')}</CardTitle>
-          <CardDescription>
-            {language === 'uz' 
-              ? 'Ism yoki telefon raqami bo\'yicha qidirish' 
-              : 'Поиск по имени или номеру телефона'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-            <Input
-              placeholder={language === 'uz' ? 'Ism yoki telefon...' : 'Имя или телефон...'}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* Search */}
+<Card>
+  <CardHeader className="pb-2">
+    <CardTitle className="text-lg">{t('search')}</CardTitle>
+    <CardDescription>
+      {language === 'uz' 
+        ? 'Ism yoki telefon raqami bo\'yicha qidirish' 
+        : 'Поиск по имени или номеру телефона'}
+    </CardDescription>
+  </CardHeader>
+  <CardContent>
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+      <Input
+        type="search"
+        placeholder={language === 'uz' 
+          ? "Ism yoki telefon raqamini kiriting..." 
+          : "Введите имя или номер телефона..."}
+        value={searchTerm}
+        onChange={handleSearchChange}
+        className="pl-10"
+        disabled={isFetchingCustomers}
+      />
+      {searchTerm && (
+        <button
+          onClick={handleClearSearch}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  </CardContent>
+</Card>
 
       {/* Customers Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>{language === 'uz' ? 'Mijozlar ro\'yxati' : 'Список клиентов'}</CardTitle>
-          <CardDescription>
-            {customers.length} {language === 'uz' ? 'ta mijoz' : 'клиентов'}
-          </CardDescription>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">{language === 'uz' ? 'Mijozlar ro\'yxati' : 'Список клиентов'}</CardTitle>
+              <CardDescription>
+                {customers.length} {language === 'uz' ? 'ta mijoz' : 'клиентов'}
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {isLoadingCustomers ? (
+          {isFetchingCustomers && customers.length === 0 ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
@@ -241,13 +301,14 @@ export const CustomersPage: React.FC = () => {
               <p className="text-gray-500 dark:text-gray-400">
                 {searchTerm 
                   ? (language === 'uz' ? 'Hech narsa topilmadi' : 'Ничего не найдено')
-                  : t('noCustomers')}
+                  : (language === 'uz' ? 'Hozircha mijozlar yo\'q' : 'Нет клиентов')}
               </p>
               {searchTerm && (
                 <Button 
                   variant="link" 
-                  onClick={() => setSearchTerm('')}
+                  onClick={handleClearSearch}
                   className="mt-2"
+                  disabled={isFetchingCustomers}
                 >
                   {language === 'uz' ? 'Tozalash' : 'Очистить'}
                 </Button>
@@ -258,11 +319,11 @@ export const CustomersPage: React.FC = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t('customerName')}</TableHead>
-                    <TableHead>{t('phone')}</TableHead>
-                    <TableHead>{t('address')}</TableHead>
-                    <TableHead className="text-right">{t('outstandingDebt')}</TableHead>
-                    <TableHead className="text-right">
+                    <TableHead className="w-[200px]">{t('customerName')}</TableHead>
+                    <TableHead className="w-[150px]">{t('phone')}</TableHead>
+                    <TableHead className="w-[200px]">{t('address')}</TableHead>
+                    <TableHead className="w-[150px] text-right">{t('outstandingDebt')}</TableHead>
+                    <TableHead className="w-[100px] text-right">
                       {language === 'uz' ? 'Amallar' : 'Действия'}
                     </TableHead>
                   </TableRow>
@@ -270,33 +331,52 @@ export const CustomersPage: React.FC = () => {
                 <TableBody>
                   {filteredCustomers.map((customer) => {
                     const balance = getCustomerBalance(customer.id);
+                    const isDeletingThis = isDeleting === customer.id;
+                    
                     return (
-                      <TableRow key={customer.id}>
+                      <TableRow 
+                        key={customer.id} 
+                        className="hover:bg-gray-50 dark:hover:bg-gray-800"
+                      >
                         <TableCell className="font-medium">{customer.name}</TableCell>
                         <TableCell>{customer.phone}</TableCell>
-                        <TableCell>{customer.address || '-'}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">
+                          {customer.address || '-'}
+                        </TableCell>
                         <TableCell className="text-right">
-                          <span className={balance.balance > 0 ? 'font-semibold text-red-600' : 'text-green-600'}>
-                            {formatCurrency(balance.balance)} {language === 'uz' ? 'so\'m' : 'сум'}
+                          <span className={
+                            balance.balance > 0 
+                              ? 'font-semibold text-red-600' 
+                              : 'text-green-600'
+                          }>
+                            {formatCurrency(balance.balance)} {language === 'uz' ? "so'm" : "сум"}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex justify-end gap-1">
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleEditClick(customer)}
-                              disabled={isLoadingCustomers}
+                              disabled={isUpdating || isDeleting === customer.id}
+                              className="h-8 w-8 p-0"
                             >
                               <Edit className="h-4 w-4" />
+                              <span className="sr-only">Edit</span>
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDelete(customer)}
-                              disabled={isLoadingCustomers}
+                              disabled={isUpdating || isDeleting === customer.id}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                             >
-                              <Trash2 className="h-4 w-4 text-red-600" />
+                              {isDeletingThis ? (
+                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                              <span className="sr-only">Delete</span>
                             </Button>
                           </div>
                         </TableCell>
@@ -311,7 +391,14 @@ export const CustomersPage: React.FC = () => {
       </Card>
 
       {/* Add Customer Dialog */}
-      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+      <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+        if (!isAdding) {
+          setIsAddDialogOpen(open);
+          if (!open) {
+            setFormData({ name: '', phone: '', address: '', email: '', notes: '' });
+          }
+        }
+      }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>{t('addCustomer')}</DialogTitle>
@@ -323,21 +410,28 @@ export const CustomersPage: React.FC = () => {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="name">{t('customerName')} *</Label>
+              <Label htmlFor="name">
+                {t('customerName')} <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder={language === 'uz' ? 'Masalan: Anvar Aliyev' : 'Например: Анвар Алиев'}
+                disabled={isAdding}
+                autoFocus
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phone">{t('phone')} *</Label>
+              <Label htmlFor="phone">
+                {t('phone')} <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="phone"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 placeholder="+998901234567"
+                disabled={isAdding}
               />
             </div>
             <div className="space-y-2">
@@ -347,16 +441,18 @@ export const CustomersPage: React.FC = () => {
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 placeholder={language === 'uz' ? 'Manzil' : 'Адрес'}
+                disabled={isAdding}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">{t('email')}</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="email@example.com"
+                placeholder="example@mail.com"
+                disabled={isAdding}
               />
             </div>
             <div className="space-y-2">
@@ -367,17 +463,25 @@ export const CustomersPage: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder={language === 'uz' ? 'Qo\'shimcha ma\'lumotlar' : 'Дополнительная информация'}
                 rows={3}
+                disabled={isAdding}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsAddDialogOpen(false)}
+              disabled={isAdding}
+            >
               {t('cancel')}
             </Button>
-            <Button onClick={handleAdd} disabled={isLoadingCustomers}>
-              {isLoadingCustomers ? (
+            <Button 
+              onClick={handleAdd} 
+              disabled={isAdding || !formData.name || !formData.phone}
+            >
+              {isAdding ? (
                 <>
-                  <span className="animate-spin mr-2">⟳</span>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   {language === 'uz' ? 'Qo\'shilmoqda...' : 'Добавление...'}
                 </>
               ) : (
@@ -389,7 +493,15 @@ export const CustomersPage: React.FC = () => {
       </Dialog>
 
       {/* Edit Customer Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        if (!isUpdating) {
+          setIsEditDialogOpen(open);
+          if (!open) {
+            setSelectedCustomer(null);
+            setFormData({ name: '', phone: '', address: '', email: '', notes: '' });
+          }
+        }
+      }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>{language === 'uz' ? 'Mijozni tahrirlash' : 'Редактировать клиента'}</DialogTitle>
@@ -401,19 +513,26 @@ export const CustomersPage: React.FC = () => {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-name">{t('customerName')} *</Label>
+              <Label htmlFor="edit-name">
+                {t('customerName')} <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="edit-name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                disabled={isUpdating}
+                autoFocus
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-phone">{t('phone')} *</Label>
+              <Label htmlFor="edit-phone">
+                {t('phone')} <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="edit-phone"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                disabled={isUpdating}
               />
             </div>
             <div className="space-y-2">
@@ -422,15 +541,18 @@ export const CustomersPage: React.FC = () => {
                 id="edit-address"
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                disabled={isUpdating}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-email">{t('email')}</Label>
+              <Label htmlFor="edit-email">Email</Label>
               <Input
                 id="edit-email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="example@mail.com"
+                disabled={isUpdating}
               />
             </div>
             <div className="space-y-2">
@@ -440,17 +562,25 @@ export const CustomersPage: React.FC = () => {
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={3}
+                disabled={isUpdating}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsEditDialogOpen(false)}
+              disabled={isUpdating}
+            >
               {t('cancel')}
             </Button>
-            <Button onClick={handleEdit} disabled={isLoadingCustomers}>
-              {isLoadingCustomers ? (
+            <Button 
+              onClick={handleEdit} 
+              disabled={isUpdating || !formData.name || !formData.phone}
+            >
+              {isUpdating ? (
                 <>
-                  <span className="animate-spin mr-2">⟳</span>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   {language === 'uz' ? 'Saqlanmoqda...' : 'Сохранение...'}
                 </>
               ) : (

@@ -1,4 +1,4 @@
-import { ApiCustomer, CreateCustomerData, LoginCredentials } from "./types";
+import { ApiCustomer, CreateCustomerData, LoginCredentials, ApiUser, CreateUserData } from "./types";
 
 // api.ts
 const API_BASE_URL = 'https://plywood.pythonanywhere.com';
@@ -93,6 +93,36 @@ export const authApi = {
   },
 };
 
+// User API
+export const userApi = {
+  // Get all users
+  getAll: (): Promise<ApiUser[]> => {
+    return apiRequest<ApiUser[]>('/user/users/');
+  },
+
+  // Create new user
+  create: (data: CreateUserData): Promise<ApiUser> => {
+    return apiRequest<ApiUser>('/user/users/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update user
+  update: (id: number, data: Partial<CreateUserData>): Promise<ApiUser> => {
+    return apiRequest<ApiUser>(`/user/users/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete user
+  delete: (id: number): Promise<void> => {
+    return apiRequest<void>(`/user/users/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+};
 
 export const customerApi = {
   // Get all customers with optional search

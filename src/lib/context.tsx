@@ -1,6 +1,19 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi, customerApi } from '../lib/api';
-import { User, UserRole, Product, Customer, CartItem, Sale, ProductArrival, CustomerTransaction, ApiCustomer, CreateCustomerData } from '../lib/types';
+import { authApi, customerApi, userApi } from '../lib/api';
+import { 
+  User, 
+  UserRole, 
+  Product, 
+  Customer, 
+  CartItem, 
+  Sale, 
+  ProductArrival, 
+  CustomerTransaction, 
+  ApiCustomer, 
+  CreateCustomerData,
+  ApiUser,
+  CreateUserData 
+} from '../lib/types';
 import { toast } from 'sonner';
 
 interface AppContextType {
@@ -25,9 +38,11 @@ interface AppContextType {
   updateCartItem: (itemId: string, quantity: number) => void;
   clearCart: () => void;
   addSale: (sale: Sale) => void;
-  addUser: (user: User) => void;
-  updateUser: (id: string, userData: Partial<User>) => void;
-  deleteUser: (id: string) => void;
+  // User API functions
+  fetchUsers: () => Promise<void>;
+  addUser: (userData: Omit<User, 'id' | 'createdAt'>) => Promise<void>;
+  updateUser: (id: string, userData: Partial<Omit<User, 'id' | 'createdAt'>>) => Promise<void>;
+  deleteUser: (id: string) => Promise<void>;
   addProductArrival: (arrival: Omit<ProductArrival, 'id' | 'createdAt'>) => void;
   updateProductArrival: (id: string, arrival: Partial<ProductArrival>) => void;
   deleteProductArrival: (id: string) => void;
@@ -39,12 +54,20 @@ interface AppContextType {
     totalPayments: number;
     balance: number;
   };
-  // Customer API functions
+  // Customer API functions with separate loading states
   fetchCustomers: (search?: string) => Promise<void>;
   addCustomer: (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateCustomer: (id: string, customerData: Partial<Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
-  isLoadingCustomers: boolean;
+  // Separate loading states
+  isFetchingCustomers: boolean;
+  isAddingCustomer: boolean;
+  isUpdatingCustomer: boolean;
+  isDeletingCustomer: boolean;
+  isFetchingUsers: boolean;
+  isAddingUser: boolean;
+  isUpdatingUser: boolean;
+  isDeletingUser: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -56,7 +79,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
   
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+  
+  // Separate loading states for customer operations
+  const [isFetchingCustomers, setIsFetchingCustomers] = useState(false);
+  const [isAddingCustomer, setIsAddingCustomer] = useState(false);
+  const [isUpdatingCustomer, setIsUpdatingCustomer] = useState(false);
+  const [isDeletingCustomer, setIsDeletingCustomer] = useState(false);
+  
+  // Separate loading states for user operations
+  const [isFetchingUsers, setIsFetchingUsers] = useState(false);
+  const [isAddingUser, setIsAddingUser] = useState(false);
+  const [isUpdatingUser, setIsUpdatingUser] = useState(false);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+  
   const [language, setLanguage] = useState<'uz' | 'ru'>(() => {
     return (localStorage.getItem('language') as 'uz' | 'ru') || 'uz';
   });
@@ -65,33 +100,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
   });
 
-  // Initialize users
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: '1',
-      username: 'sales1',
-      password: 'sales123',
-      role: 'salesperson',
-      name: 'Алишер Каримов',
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: '2',
-      username: 'admin',
-      password: 'admin123',
-      role: 'admin',
-      name: 'Фарход Ахмедов',
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: '3',
-      username: 'manager',
-      password: 'manager123',
-      role: 'manager',
-      name: 'Дилшод Юсупов',
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+  // Initialize users as empty array - will be fetched from API
+  const [users, setUsers] = useState<User[]>([]);
 
   // Initialize products
   const [products, setProducts] = useState<Product[]>([
@@ -311,7 +321,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       name: apiCustomer.full_name,
       phone: apiCustomer.phone_number,
       address: apiCustomer.location,
-      email: apiCustomer.about, // Using about field for email
+      email: apiCustomer.about,
       notes: apiCustomer.description,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -329,11 +339,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
+  // Map API user to app User type
+  const mapApiUserToUser = (apiUser: ApiUser): User => {
+    const mapApiRole = (role: string): UserRole => {
+      switch (role?.toLowerCase()) {
+        case 's':
+          return 'salesperson';
+        case 'a':
+          return 'admin';
+        case 'm':
+          return 'manager';
+        default:
+          console.warn('Unknown role:', role, 'defaulting to salesperson');
+          return 'salesperson';
+      }
+    };
+
+    return {
+      id: apiUser.id.toString(),
+      username: apiUser.username || '',
+      password: '',
+      role: mapApiRole(apiUser.role),
+      full_name: apiUser.full_name || apiUser.username || '',
+      phone_number: apiUser.phone_number || '',
+      createdAt: new Date().toISOString(),
+    };
+  };
+
+  // Map app User to API user data
+  const mapUserToApiData = (userData: Omit<User, 'id' | 'createdAt'>): CreateUserData => {
+    const mapAppRole = (role: UserRole): 's' | 'a' | 'm' => {
+      switch (role) {
+        case 'salesperson':
+          return 's';
+        case 'admin':
+          return 'a';
+        case 'manager':
+          return 'm';
+        default:
+          return 's';
+      }
+    };
+
+    return {
+      full_name: userData.full_name,
+      username: userData.username,
+      phone_number: userData.phone_number || '',
+      password: userData.password || '',
+      role: mapAppRole(userData.role),
+    };
+  };
+
   // Fetch customers from API
   const fetchCustomers = async (search?: string) => {
     if (!user) return;
     
-    setIsLoadingCustomers(true);
+    setIsFetchingCustomers(true);
     try {
       const apiCustomers = await customerApi.getAll(search);
       const mappedCustomers = apiCustomers.map(mapApiCustomerToCustomer);
@@ -344,7 +405,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ? 'Mijozlarni yuklashda xatolik yuz berdi' 
         : 'Ошибка при загрузке клиентов');
     } finally {
-      setIsLoadingCustomers(false);
+      setIsFetchingCustomers(false);
     }
   };
 
@@ -355,6 +416,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
 
+    setIsAddingCustomer(true);
     try {
       const apiData = mapCustomerToApiData(customerData);
       const newApiCustomer = await customerApi.create(apiData);
@@ -368,6 +430,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ? 'Mijoz qo\'shishda xatolik yuz berdi' 
         : 'Ошибка при добавлении клиента');
       throw error;
+    } finally {
+      setIsAddingCustomer(false);
     }
   };
 
@@ -378,6 +442,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
 
+    setIsUpdatingCustomer(true);
     try {
       const apiData: Partial<CreateCustomerData> = {};
       if (customerData.name) apiData.full_name = customerData.name;
@@ -397,6 +462,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ? 'Mijoz yangilashda xatolik yuz berdi' 
         : 'Ошибка при обновлении клиента');
       throw error;
+    } finally {
+      setIsUpdatingCustomer(false);
     }
   };
 
@@ -407,6 +474,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return;
     }
 
+    setIsDeletingCustomer(true);
     try {
       await customerApi.delete(parseInt(id));
       setCustomers(prev => prev.filter(c => c.id !== id));
@@ -417,17 +485,140 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ? 'Mijoz o\'chirishda xatolik yuz berdi' 
         : 'Ошибка при удалении клиента');
       throw error;
+    } finally {
+      setIsDeletingCustomer(false);
     }
   };
 
-  // Fetch customers when user is authenticated
-  useEffect(() => {
-    if (user) {
-      fetchCustomers();
+  // Fetch users from API
+  const fetchUsers = async () => {
+    if (!user) return;
+    
+    setIsFetchingUsers(true);
+    try {
+      const apiUsers = await userApi.getAll();
+      const mappedUsers = apiUsers.map(mapApiUserToUser);
+      setUsers(mappedUsers);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+      toast.error(language === 'uz' 
+        ? 'Foydalanuvchilarni yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке пользователей');
+    } finally {
+      setIsFetchingUsers(false);
     }
-  }, [user]);
+  };
 
-  const mapApiUserToUser = (apiUser: any): User => {
+  // Add user via API
+  const addUser = async (userData: Omit<User, 'id' | 'createdAt'>) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    setIsAddingUser(true);
+    try {
+      const apiData = mapUserToApiData(userData);
+      const newApiUser = await userApi.create(apiData);
+      const newUser = mapApiUserToUser(newApiUser);
+      
+      setUsers(prev => [...prev, newUser]);
+      toast.success(language === 'uz' ? 'Foydalanuvchi qo\'shildi' : 'Пользователь добавлен');
+    } catch (error) {
+      console.error('Failed to add user:', error);
+      toast.error(language === 'uz' 
+        ? 'Foydalanuvchi qo\'shishda xatolik yuz berdi' 
+        : 'Ошибка при добавлении пользователя');
+      throw error;
+    } finally {
+      setIsAddingUser(false);
+    }
+  };
+
+  // Update user via API
+  const updateUser = async (id: string, userData: Partial<Omit<User, 'id' | 'createdAt'>>) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    setIsUpdatingUser(true);
+    try {
+      const apiData: Partial<CreateUserData> = {};
+      if (userData.full_name) apiData.full_name = userData.full_name;
+      if (userData.username) apiData.username = userData.username;
+      if (userData.phone_number) apiData.phone_number = userData.phone_number;
+      if (userData.password) apiData.password = userData.password;
+      if (userData.role) {
+        switch (userData.role) {
+          case 'salesperson':
+            apiData.role = 's';
+            break;
+          case 'admin':
+            apiData.role = 'a';
+            break;
+          case 'manager':
+            apiData.role = 'm';
+            break;
+        }
+      }
+
+      const updatedApiUser = await userApi.update(parseInt(id), apiData);
+      const updatedUser = mapApiUserToUser(updatedApiUser);
+      
+      setUsers(prev => prev.map(u => u.id === id ? updatedUser : u));
+      
+      // If updating current user, update the user state
+      if (user.id === id) {
+        setUser(updatedUser);
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      }
+      
+      toast.success(language === 'uz' ? 'Foydalanuvchi yangilandi' : 'Пользователь обновлен');
+    } catch (error) {
+      console.error('Failed to update user:', error);
+      toast.error(language === 'uz' 
+        ? 'Foydalanuvchi yangilashda xatolik yuz berdi' 
+        : 'Ошибка при обновлении пользователя');
+      throw error;
+    } finally {
+      setIsUpdatingUser(false);
+    }
+  };
+
+  // Delete user via API
+  const deleteUser = async (id: string) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    // Don't allow deleting yourself
+    if (user.id === id) {
+      toast.error(language === 'uz' 
+        ? 'O\'zingizni o\'chira olmaysiz' 
+        : 'Вы не можете удалить себя');
+      return;
+    }
+
+    setIsDeletingUser(true);
+    try {
+      await userApi.delete(parseInt(id));
+      setUsers(prev => prev.filter(u => u.id !== id));
+      toast.success(language === 'uz' ? 'Foydalanuvchi o\'chirildi' : 'Пользователь удален');
+    } catch (error) {
+      console.error('Failed to delete user:', error);
+      toast.error(language === 'uz' 
+        ? 'Foydalanuvchi o\'chirishda xatolik yuz berdi' 
+        : 'Ошибка при удалении пользователя');
+      throw error;
+    } finally {
+      setIsDeletingUser(false);
+    }
+  };
+
+  // Map API user from /user/me/ endpoint
+  const mapCurrentUser = (apiUser: any): User => {
     console.log('Mapping API user from /user/me/:', apiUser);
     
     const mapApiRole = (role: string): UserRole => {
@@ -449,10 +640,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       username: apiUser.username || '',
       password: '',
       role: mapApiRole(apiUser.role),
-      name: apiUser.full_name || apiUser.username || '',
+      full_name: apiUser.full_name || apiUser.username || '',
+      phone_number: apiUser.phone_number || '',
       createdAt: new Date().toISOString(),
     };
   };
+
+  // Fetch customers when user is authenticated
+  useEffect(() => {
+    if (user) {
+      fetchCustomers();
+      fetchUsers();
+    }
+  }, [user]);
 
   // Set theme class on body
   useEffect(() => {
@@ -477,23 +677,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       localStorage.removeItem('user');
     }
   }, [user]);
-
-  // User management functions
-  const addUser = (newUser: User) => {
-    setUsers(prevUsers => [...prevUsers, newUser]);
-  };
-
-  const updateUser = (id: string, userData: Partial<User>) => {
-    setUsers(prevUsers =>
-      prevUsers.map(user =>
-        user.id === id ? { ...user, ...userData } : user
-      )
-    );
-  };
-
-  const deleteUser = (id: string) => {
-    setUsers(prevUsers => prevUsers.filter(user => user.id !== id));
-  };
 
   // Cart functions
   const addToCart = (item: CartItem) => {
@@ -659,7 +842,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const userData = await authApi.getCurrentUser();
       console.log('User data from /user/me/:', userData);
       
-      const mappedUser = mapApiUserToUser(userData);
+      const mappedUser = mapCurrentUser(userData);
       console.log('Mapped user:', mappedUser);
       
       setUser(mappedUser);
@@ -703,6 +886,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       localStorage.removeItem('user');
       
       setUser(null);
+      setUsers([]);
+      setCustomers([]);
       
       console.log('6. Redirecting to login');
       window.location.href = '/login';
@@ -718,7 +903,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     users,
     isAuthenticated: !!user,
     isLoading,
-    isLoadingCustomers,
+    isFetchingCustomers,
+    isAddingCustomer,
+    isUpdatingCustomer,
+    isDeletingCustomer,
+    isFetchingUsers,
+    isAddingUser,
+    isUpdatingUser,
+    isDeletingUser,
     language,
     theme,
     products,
@@ -736,6 +928,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     updateCartItem,
     clearCart,
     addSale,
+    fetchUsers,
     addUser,
     updateUser,
     deleteUser,

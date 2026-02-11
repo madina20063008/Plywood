@@ -28,15 +28,6 @@ export interface LoginCredentials {
   password: string;
 }
 
-export interface ApiUser {
-  id: number;
-  username: string;
-  email?: string;
-  first_name?: string;
-  last_name?: string;
-  role?: string;
-}
-
 export interface ApiError {
   detail?: string;
   non_field_errors?: string[];
@@ -60,8 +51,9 @@ export interface User {
   username: string;
   password: string;
   role: UserRole;
-  name: string;
+  full_name: string;
   createdAt: string;
+  phone_number: string
 }
 
 // Product types
@@ -210,3 +202,22 @@ export interface CreateCustomerData {
   about: string;
   description: string;
 }
+
+// User API types
+export interface ApiUser {
+  id: number;
+  full_name: string;
+  username: string;
+  phone_number: string;
+  role: 's' | 'a' | 'm'; // s = salesperson, a = admin, m = manager
+}
+
+export interface CreateUserData {
+  full_name: string;
+  username: string;
+  phone_number: string;
+  password: string;
+  role: 's' | 'a' | 'm';
+}
+
+export type UpdateUserData = Partial<CreateUserData>;
