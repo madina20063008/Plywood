@@ -24,11 +24,13 @@ import {
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { useState } from 'react';
+import { toast } from 'sonner';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, logout, language, setLanguage, theme, toggleTheme, cart } = useApp();
+  const { user, logout, language, setLanguage, theme, toggleTheme, cart = [] } = useApp();
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const t = (key: string) => getTranslation(language, key as any);
 
@@ -103,11 +105,40 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   ];
 
   const filteredNavigation = navigation.filter(item => 
-    item.roles.includes(currentUser?.role || '')
+    item.roles.includes(user?.role || '')
   );
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      
+      // Get refresh token from localStorage
+      const refreshToken = localStorage.getItem('refreshToken');
+      
+      if (refreshToken) {
+        // Call the API logout
+        await logout(); // Your context logout function should call authApi.logout
+        
+        toast.success(language === 'uz' 
+          ? 'Chiqish muvaffaqiyatli' 
+          : 'Выход успешный');
+      } else {
+        // If no refresh token, just do local logout
+        logout();
+      }
+      
+    } catch (error) {
+      console.error('Logout error:', error);
+      
+      // Even if API logout fails, do local logout
+      logout();
+      
+      toast.error(language === 'uz' 
+        ? 'Chiqishda xatolik yuz berdi' 
+        : 'Произошла ошибка при выходе');
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -143,8 +174,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
           {/* User info */}
           <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{currentUser?.name}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">{t(currentUser?.role || '')}</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{t(user?.role || '')}</p>
           </div>
 
           {/* Navigation */}
@@ -181,9 +212,19 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               variant="ghost"
               className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
               onClick={handleLogout}
+              disabled={isLoggingOut}
             >
-              <LogOut className="mr-3 h-5 w-5" />
-              {t('logout')}
+              {isLoggingOut ? (
+                <>
+                  <span className="animate-spin mr-3">⟳</span>
+                  {language === 'uz' ? 'Chiqilmoqda...' : 'Выход...'}
+                </>
+              ) : (
+                <>
+                  <LogOut className="mr-3 h-5 w-5" />
+                  {t('logout')}
+                </>
+              )}
             </Button>
           </div>
         </div>

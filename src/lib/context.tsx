@@ -1,58 +1,37 @@
+// context.tsx
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User, UserRole, Language, Product, CartItem, Sale, ProductArrival, Customer, CustomerTransaction } from './types';
+import { authApi } from '../lib/api';
+import { User, UserRole, Product, Customer, CartItem, Sale, ProductArrival, CustomerTransaction } from '../lib/types';
+import { toast } from 'sonner';
 
 interface AppContextType {
-  // Auth
-  currentUser: User | null;
-  login: (username: string, password: string) => boolean;
-  logout: () => void;
-  
-  // Language
-  language: Language;
-  setLanguage: (lang: Language) => void;
-  
-  // Theme
+  user: User | null;
+  users: User[];
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  language: 'uz' | 'ru';
   theme: 'light' | 'dark';
-  toggleTheme: () => void;
-  
-  // Products
   products: Product[];
-  addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateProduct: (id: string, product: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
-  
-  // Cart
+  customers: Customer[];
   cart: CartItem[];
-  addToCart: (item: CartItem) => void;
-  updateCartItem: (id: string, item: Partial<CartItem>) => void;
-  removeFromCart: (id: string) => void;
-  clearCart: () => void;
-  
-  // Sales
   sales: Sale[];
-  completeSale: (sale: Omit<Sale, 'id' | 'receiptNumber' | 'createdAt'>) => string;
-  updateSale: (id: string, sale: Partial<Sale>) => void;
-  
-  // Product Arrivals
   productArrivals: ProductArrival[];
+  customerTransactions: CustomerTransaction[];
+  login: (username: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  setLanguage: (language: 'uz' | 'ru') => void;
+  toggleTheme: () => void;
+  addToCart: (item: CartItem) => void;
+  removeFromCart: (itemId: string) => void;
+  updateCartItem: (itemId: string, quantity: number) => void;
+  clearCart: () => void;
+  addSale: (sale: Sale) => void;
+  addUser: (user: User) => void;
+  updateUser: (id: string, userData: Partial<User>) => void;
+  deleteUser: (id: string) => void;
   addProductArrival: (arrival: Omit<ProductArrival, 'id' | 'createdAt'>) => void;
   updateProductArrival: (id: string, arrival: Partial<ProductArrival>) => void;
   deleteProductArrival: (id: string) => void;
-  
-  // Users
-  users: User[];
-  addUser: (user: Omit<User, 'id' | 'createdAt'>) => void;
-  updateUser: (id: string, user: Partial<User>) => void;
-  deleteUser: (id: string) => void;
-  
-  // Customers
-  customers: Customer[];
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => void;
-  updateCustomer: (id: string, customer: Partial<Customer>) => void;
-  deleteCustomer: (id: string) => void;
-  
-  // Customer Transactions
-  customerTransactions: CustomerTransaction[];
   addCustomerTransaction: (transaction: Omit<CustomerTransaction, 'id' | 'createdAt'>) => void;
   updateCustomerTransaction: (id: string, transaction: Partial<CustomerTransaction>) => void;
   deleteCustomerTransaction: (id: string) => void;
@@ -65,483 +44,610 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Mock initial data
-const initialUsers: User[] = [
-  {
-    id: '1',
-    username: 'sales1',
-    password: 'sales123',
-    role: 'salesperson',
-    name: 'Алишер Каримов',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    username: 'admin',
-    password: 'admin123',
-    role: 'admin',
-    name: 'Фарход Ахмедов',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    username: 'manager',
-    password: 'manager123',
-    role: 'manager',
-    name: 'Дилшод Юсупов',
-    createdAt: new Date().toISOString(),
-  },
-];
-
-// Initial mock products
-const initialProducts: Product[] = [
-  {
-    id: '1',
-    name: 'LDSP Черный',
-    category: 'LDSP',
-    color: '#000000',
-    width: 2700,
-    height: 1000,
-    thickness: 16,
-    quality: 'Премиум',
-    purchasePrice: 70000,
-    unitPrice: 85000,
-    stockQuantity: 45,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    name: 'LDSP Белый',
-    category: 'LDSP',
-    color: '#FFFFFF',
-    width: 2700,
-    height: 1000,
-    thickness: 16,
-    quality: 'Премиум',
-    purchasePrice: 68000,
-    unitPrice: 82000,
-    stockQuantity: 38,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    name: 'MDF Серый',
-    category: 'MDF',
-    color: '#808080',
-    width: 2440,
-    height: 1220,
-    thickness: 18,
-    quality: 'Стандарт',
-    purchasePrice: 62000,
-    unitPrice: 75000,
-    stockQuantity: 22,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '4',
-    name: 'DVP Коричневый',
-    category: 'DVP',
-    color: '#8B4513',
-    width: 2750,
-    height: 1700,
-    thickness: 3,
-    quality: 'Эконом',
-    purchasePrice: 28000,
-    unitPrice: 35000,
-    stockQuantity: 67,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '5',
-    name: 'DSP Бежевый',
-    category: 'DSP',
-    color: '#F5F5DC',
-    width: 2800,
-    height: 2070,
-    thickness: 22,
-    quality: 'Стандарт',
-    purchasePrice: 78000,
-    unitPrice: 95000,
-    stockQuantity: 18,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '6',
-    name: 'LDSP Синий',
-    category: 'LDSP',
-    color: '#1E40AF',
-    width: 2700,
-    height: 1000,
-    thickness: 16,
-    quality: 'Премиум',
-    purchasePrice: 72000,
-    unitPrice: 87000,
-    stockQuantity: 30,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '7',
-    name: 'MDF Зеленый',
-    category: 'MDF',
-    color: '#059669',
-    width: 2440,
-    height: 1220,
-    thickness: 18,
-    quality: 'Пемиум',
-    purchasePrice: 64000,
-    unitPrice: 78000,
-    stockQuantity: 15,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '8',
-    name: 'LDSP Красный',
-    category: 'LDSP',
-    color: '#DC2626',
-    width: 2700,
-    height: 1000,
-    thickness: 16,
-    quality: 'Стандарт',
-    purchasePrice: 68000,
-    unitPrice: 83000,
-    stockQuantity: 12,
-    enabled: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
-// Initial mock customers
-const initialCustomers: Customer[] = [
-  {
-    id: '1',
-    name: 'Иван Иванов',
-    phone: '+998901234567',
-    email: 'ivan@example.com',
-    address: 'ул. Ленина, 123',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    name: 'Мария Петрова',
-    phone: '+998907654321',
-    email: 'maria@example.com',
-    address: 'ул. Мира, 456',
-    createdAt: new Date().toISOString(),
-  },
-];
-
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [language, setLanguage] = useState<Language>('uz');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [user, setUser] = useState<User | null>(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [language, setLanguage] = useState<'uz' | 'ru'>(() => {
+    return (localStorage.getItem('language') as 'uz' | 'ru') || 'uz';
+  });
+  
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+  });
+
+  // Initialize users
+  const [users, setUsers] = useState<User[]>([
+    {
+      id: '1',
+      username: 'sales1',
+      password: 'sales123',
+      role: 'salesperson',
+      name: 'Алишер Каримов',
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: '2',
+      username: 'admin',
+      password: 'admin123',
+      role: 'admin',
+      name: 'Фарход Ахмедов',
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: '3',
+      username: 'manager',
+      password: 'manager123',
+      role: 'manager',
+      name: 'Дилшод Юсупов',
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+
+  // Initialize products
+  const [products, setProducts] = useState<Product[]>([
+    {
+      id: '1',
+      name: 'LDSP Черный',
+      category: 'LDSP',
+      color: '#000000',
+      width: 2700,
+      height: 1000,
+      thickness: 16,
+      quality: 'Премиум',
+      purchasePrice: 70000,
+      unitPrice: 85000,
+      stockQuantity: 45,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: '2',
+      name: 'LDSP Белый',
+      category: 'LDSP',
+      color: '#FFFFFF',
+      width: 2700,
+      height: 1000,
+      thickness: 16,
+      quality: 'Премиум',
+      purchasePrice: 68000,
+      unitPrice: 82000,
+      stockQuantity: 38,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: '3',
+      name: 'MDF Серый',
+      category: 'MDF',
+      color: '#808080',
+      width: 2440,
+      height: 1220,
+      thickness: 18,
+      quality: 'Стандарт',
+      purchasePrice: 62000,
+      unitPrice: 75000,
+      stockQuantity: 22,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: '4',
+      name: 'DVP Коричневый',
+      category: 'DVP',
+      color: '#8B4513',
+      width: 2750,
+      height: 1700,
+      thickness: 3,
+      quality: 'Эконом',
+      purchasePrice: 28000,
+      unitPrice: 35000,
+      stockQuantity: 67,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: '5',
+      name: 'DSP Бежевый',
+      category: 'DSP',
+      color: '#F5F5DC',
+      width: 2800,
+      height: 2070,
+      thickness: 22,
+      quality: 'Стандарт',
+      purchasePrice: 78000,
+      unitPrice: 95000,
+      stockQuantity: 18,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: '6',
+      name: 'LDSP Синий',
+      category: 'LDSP',
+      color: '#1E40AF',
+      width: 2700,
+      height: 1000,
+      thickness: 16,
+      quality: 'Премиум',
+      purchasePrice: 72000,
+      unitPrice: 87000,
+      stockQuantity: 30,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: '7',
+      name: 'MDF Зеленый',
+      category: 'MDF',
+      color: '#059669',
+      width: 2440,
+      height: 1220,
+      thickness: 18,
+      quality: 'Пемиум',
+      purchasePrice: 64000,
+      unitPrice: 78000,
+      stockQuantity: 15,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: '8',
+      name: 'LDSP Красный',
+      category: 'LDSP',
+      color: '#DC2626',
+      width: 2700,
+      height: 1000,
+      thickness: 16,
+      quality: 'Стандарт',
+      purchasePrice: 68000,
+      unitPrice: 83000,
+      stockQuantity: 12,
+      enabled: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ]);
+
+  // Initialize customers
+  const [customers, setCustomers] = useState<Customer[]>([
+    {
+      id: '1',
+      name: 'Иван Иванов',
+      phone: '+998901234567',
+      email: 'ivan@example.com',
+      address: 'ул. Ленина, 123',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    {
+      id: '2',
+      name: 'Мария Петрова',
+      phone: '+998907654321',
+      email: 'maria@example.com',
+      address: 'ул. Мира, 456',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  ]);
+
+  // Initialize cart
   const [cart, setCart] = useState<CartItem[]>([]);
+  
+  // Initialize sales
   const [sales, setSales] = useState<Sale[]>([]);
-  const [productArrivals, setProductArrivals] = useState<ProductArrival[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
-  const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([]);
-  const [users, setUsers] = useState<User[]>(initialUsers);
 
-  // Load from localStorage on mount
+  // Initialize product arrivals
+  const [productArrivals, setProductArrivals] = useState<ProductArrival[]>([
+    {
+      id: '1',
+      productId: '1',
+      productName: 'LDSP Черный',
+      category: 'LDSP',
+      quantity: 50,
+      purchasePrice: 70000,
+      sellingPrice: 85000,
+      totalInvestment: 3500000,
+      arrivalDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ago
+      notes: 'Первая партия',
+      receivedBy: 'Дилшод Юсупов',
+      createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: '2',
+      productId: '2',
+      productName: 'LDSP Белый',
+      category: 'LDSP',
+      quantity: 40,
+      purchasePrice: 68000,
+      sellingPrice: 82000,
+      totalInvestment: 2720000,
+      arrivalDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
+      notes: 'Качество премиум',
+      receivedBy: 'Дилшод Юсупов',
+      createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+  ]);
+
+  // Initialize customer transactions
+  const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([
+    {
+      id: '1',
+      customerId: '1',
+      customerName: 'Иван Иванов',
+      type: 'purchase',
+      amount: 850000,
+      saleId: 'sale-001',
+      receiptNumber: 'R-001',
+      description: 'Покупка LDSP Черный 10 шт',
+      processedBy: 'Алишер Каримов',
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: '2',
+      customerId: '1',
+      customerName: 'Иван Иванов',
+      type: 'payment',
+      amount: 400000,
+      description: 'Частичная оплата',
+      processedBy: 'Алишер Каримов',
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      id: '3',
+      customerId: '2',
+      customerName: 'Мария Петрова',
+      type: 'purchase',
+      amount: 1200000,
+      saleId: 'sale-002',
+      receiptNumber: 'R-002',
+      description: 'Покупка MDF Серый 16 шт',
+      processedBy: 'Алишер Каримов',
+      createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+  ]);
+
+  const mapApiUserToUser = (apiUser: any): User => {
+    console.log('Mapping API user from /user/me/:', apiUser);
+    
+    const mapApiRole = (role: string): UserRole => {
+      switch (role?.toLowerCase()) {
+        case 's': // SALER
+          return 'salesperson';
+        case 'a': // ADMIN
+          return 'admin';
+        case 'm': // MANAGER
+          return 'manager';
+        default:
+          console.warn('Unknown role:', role, 'defaulting to salesperson');
+          return 'salesperson';
+      }
+    };
+
+    return {
+      id: apiUser.id?.toString() || Date.now().toString(),
+      username: apiUser.username || '',
+      password: '', // Never store password
+      role: mapApiRole(apiUser.role),
+      name: apiUser.full_name || apiUser.username || '',
+      createdAt: new Date().toISOString(),
+    };
+  };
+
+  // Set theme class on body
   useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser');
-    const savedLanguage = localStorage.getItem('language');
-    const savedTheme = localStorage.getItem('theme');
-    const savedProducts = localStorage.getItem('products');
-    const savedSales = localStorage.getItem('sales');
-    const savedProductArrivals = localStorage.getItem('productArrivals');
-    const savedUsers = localStorage.getItem('users');
-    const savedCustomers = localStorage.getItem('customers');
-    const savedCustomerTransactions = localStorage.getItem('customerTransactions');
-
-    if (savedUser) setCurrentUser(JSON.parse(savedUser));
-    if (savedLanguage) setLanguage(savedLanguage as Language);
-    if (savedTheme) setTheme(savedTheme as 'light' | 'dark');
-    if (savedProducts) setProducts(JSON.parse(savedProducts));
-    if (savedSales) setSales(JSON.parse(savedSales));
-    if (savedProductArrivals) setProductArrivals(JSON.parse(savedProductArrivals));
-    if (savedUsers) setUsers(JSON.parse(savedUsers));
-    if (savedCustomers) setCustomers(JSON.parse(savedCustomers));
-    if (savedCustomerTransactions) setCustomerTransactions(JSON.parse(savedCustomerTransactions));
-  }, []);
-
-  // Save to localStorage
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
     } else {
-      localStorage.removeItem('currentUser');
+      document.documentElement.classList.remove('dark');
     }
-  }, [currentUser]);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
+  // Save language preference
   useEffect(() => {
     localStorage.setItem('language', language);
   }, [language]);
 
+  // Save user to localStorage when it changes
   useEffect(() => {
-    localStorage.setItem('theme', theme);
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem('products', JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    localStorage.setItem('sales', JSON.stringify(sales));
-  }, [sales]);
-
-  useEffect(() => {
-    localStorage.setItem('productArrivals', JSON.stringify(productArrivals));
-  }, [productArrivals]);
-
-  useEffect(() => {
-    localStorage.setItem('users', JSON.stringify(users));
-  }, [users]);
-
-  useEffect(() => {
-    localStorage.setItem('customers', JSON.stringify(customers));
-  }, [customers]);
-
-  useEffect(() => {
-    localStorage.setItem('customerTransactions', JSON.stringify(customerTransactions));
-  }, [customerTransactions]);
-
-  const login = (username: string, password: string): boolean => {
-    const user = users.find(u => u.username === username && u.password === password);
     if (user) {
-      setCurrentUser(user);
-      return true;
+      localStorage.setItem('user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('user');
     }
-    return false;
+  }, [user]);
+
+  // User management functions
+  const addUser = (newUser: User) => {
+    setUsers(prevUsers => [...prevUsers, newUser]);
   };
 
-  const logout = () => {
-    setCurrentUser(null);
-    setCart([]);
+  const updateUser = (id: string, userData: Partial<User>) => {
+    setUsers(prevUsers =>
+      prevUsers.map(user =>
+        user.id === id ? { ...user, ...userData } : user
+      )
+    );
   };
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  const deleteUser = (id: string) => {
+    setUsers(prevUsers => prevUsers.filter(user => user.id !== id));
   };
 
-  const addProduct = (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newProduct: Product = {
-      ...product,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setProducts(prev => [...prev, newProduct]);
-  };
-
-  const updateProduct = (id: string, product: Partial<Product>) => {
-    setProducts(prev => prev.map(p => 
-      p.id === id ? { ...p, ...product, updatedAt: new Date().toISOString() } : p
-    ));
-  };
-
-  const deleteProduct = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-  };
-
+  // Cart functions
   const addToCart = (item: CartItem) => {
-    setCart(prev => [...prev, item]);
+    setCart(prevCart => {
+      const existingItem = prevCart.find(cartItem => cartItem.product.id === item.product.id);
+      
+      if (existingItem) {
+        return prevCart.map(cartItem =>
+          cartItem.product.id === item.product.id
+            ? { ...cartItem, quantity: cartItem.quantity + item.quantity }
+            : cartItem
+        );
+      } else {
+        return [...prevCart, item];
+      }
+    });
   };
 
-  const updateCartItem = (id: string, item: Partial<CartItem>) => {
-    setCart(prev => prev.map(i => i.id === id ? { ...i, ...item } : i));
+  const removeFromCart = (itemId: string) => {
+    setCart(prevCart => prevCart.filter(item => item.id !== itemId));
   };
 
-  const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(i => i.id !== id));
+  const updateCartItem = (itemId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(itemId);
+      return;
+    }
+    
+    setCart(prevCart =>
+      prevCart.map(item =>
+        item.id === itemId ? { ...item, quantity } : item
+      )
+    );
   };
 
   const clearCart = () => {
     setCart([]);
   };
 
-  const completeSale = (sale: Omit<Sale, 'id' | 'receiptNumber' | 'createdAt'>): string => {
-    const receiptNumber = `RC${Date.now()}`;
-    const newSale: Sale = {
-      ...sale,
-      id: Date.now().toString(),
-      receiptNumber,
-      createdAt: new Date().toISOString(),
-    };
+  const addSale = (sale: Sale) => {
+    setSales(prevSales => [sale, ...prevSales]);
     
-    setSales(prev => [...prev, newSale]);
-    
-    // If this is a credit sale with a customer, create a transaction
-    if (sale.paymentMethod === 'credit' && sale.customerId && sale.customerName) {
-      const amountDue = sale.amountDue || sale.total;
-      addCustomerTransaction({
-        customerId: sale.customerId,
-        customerName: sale.customerName,
-        type: 'purchase',
-        amount: amountDue,
-        saleId: newSale.id,
-        receiptNumber: receiptNumber,
-        description: `${sale.items.length} ${language === 'uz' ? 'ta mahsulot' : 'товаров'}`,
-        processedBy: sale.salespersonName,
-      });
-    }
-    
-    // Update stock quantities
-    sale.items.forEach(item => {
-      updateProduct(item.product.id, {
-        stockQuantity: item.product.stockQuantity - item.quantity
-      });
-    });
-    
-    clearCart();
-    return receiptNumber;
+    // Update product stock quantities
+    setProducts(prevProducts =>
+      prevProducts.map(product => {
+        const saleItem = sale.items.find(item => item.product.id === product.id);
+        if (saleItem) {
+          return {
+            ...product,
+            stockQuantity: product.stockQuantity - saleItem.quantity,
+          };
+        }
+        return product;
+      })
+    );
   };
 
-  const updateSale = (id: string, sale: Partial<Sale>) => {
-    setSales(prev => prev.map(s => s.id === id ? { ...s, ...sale } : s));
-  };
-
+  // Product arrival functions
   const addProductArrival = (arrival: Omit<ProductArrival, 'id' | 'createdAt'>) => {
     const newArrival: ProductArrival = {
       ...arrival,
       id: Date.now().toString(),
       createdAt: new Date().toISOString(),
     };
-    setProductArrivals(prev => [...prev, newArrival]);
+    
+    setProductArrivals(prev => [newArrival, ...prev]);
+    
+    // Update product stock quantity
+    setProducts(prevProducts =>
+      prevProducts.map(product =>
+        product.id === arrival.productId
+          ? { ...product, stockQuantity: product.stockQuantity + arrival.quantity }
+          : product
+      )
+    );
+    
+    toast.success(language === 'uz' 
+      ? 'Mahsulot qabul qilindi' 
+      : 'Товар принят');
   };
 
-  const updateProductArrival = (id: string, arrival: Partial<ProductArrival>) => {
-    setProductArrivals(prev => prev.map(a => a.id === id ? { ...a, ...arrival } : a));
+  const updateProductArrival = (id: string, arrivalData: Partial<ProductArrival>) => {
+    setProductArrivals(prev =>
+      prev.map(arrival =>
+        arrival.id === id ? { ...arrival, ...arrivalData } : arrival
+      )
+    );
   };
 
   const deleteProductArrival = (id: string) => {
-    setProductArrivals(prev => prev.filter(a => a.id !== id));
+    setProductArrivals(prev => prev.filter(arrival => arrival.id !== id));
   };
 
-  const addUser = (user: Omit<User, 'id' | 'createdAt'>) => {
-    const newUser: User = {
-      ...user,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-    };
-    setUsers(prev => [...prev, newUser]);
-  };
-
-  const updateUser = (id: string, user: Partial<User>) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, ...user } : u));
-  };
-
-  const deleteUser = (id: string) => {
-    setUsers(prev => prev.filter(u => u.id !== id));
-  };
-
-  const addCustomer = (customer: Omit<Customer, 'id' | 'createdAt'>) => {
-    const newCustomer: Customer = {
-      ...customer,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-    };
-    setCustomers(prev => [...prev, newCustomer]);
-  };
-
-  const updateCustomer = (id: string, customer: Partial<Customer>) => {
-    setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...customer } : c));
-  };
-
-  const deleteCustomer = (id: string) => {
-    setCustomers(prev => prev.filter(c => c.id !== id));
-  };
-
+  // Customer transaction functions
   const addCustomerTransaction = (transaction: Omit<CustomerTransaction, 'id' | 'createdAt'>) => {
     const newTransaction: CustomerTransaction = {
       ...transaction,
       id: Date.now().toString(),
       createdAt: new Date().toISOString(),
     };
-    setCustomerTransactions(prev => [...prev, newTransaction]);
+    
+    setCustomerTransactions(prev => [newTransaction, ...prev]);
+    
+    toast.success(language === 'uz' 
+      ? 'Tranzaksiya qo\'shildi' 
+      : 'Транзакция добавлена');
   };
 
-  const updateCustomerTransaction = (id: string, transaction: Partial<CustomerTransaction>) => {
-    setCustomerTransactions(prev => prev.map(t => t.id === id ? { ...t, ...transaction } : t));
+  const updateCustomerTransaction = (id: string, transactionData: Partial<CustomerTransaction>) => {
+    setCustomerTransactions(prev =>
+      prev.map(transaction =>
+        transaction.id === id ? { ...transaction, ...transactionData } : transaction
+      )
+    );
   };
 
   const deleteCustomerTransaction = (id: string) => {
-    setCustomerTransactions(prev => prev.filter(t => t.id !== id));
+    setCustomerTransactions(prev => prev.filter(transaction => transaction.id !== id));
   };
 
+  // Calculate customer balance
   const getCustomerBalance = (customerId: string) => {
     const transactions = customerTransactions.filter(t => t.customerId === customerId);
+    
     const totalPurchases = transactions
       .filter(t => t.type === 'purchase')
       .reduce((sum, t) => sum + t.amount, 0);
+    
     const totalPayments = transactions
       .filter(t => t.type === 'payment')
       .reduce((sum, t) => sum + t.amount, 0);
     
+    const balance = totalPurchases - totalPayments;
+    
     return {
       totalPurchases,
       totalPayments,
-      balance: totalPurchases - totalPayments,
+      balance,
     };
   };
 
+  const login = async (username: string, password: string): Promise<boolean> => {
+    setIsLoading(true);
+    try {
+      console.log('Starting login for:', username);
+      
+      // Clear any existing tokens
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      
+      // Get access token
+      const loginResponse = await authApi.login({ username, password });
+      console.log('Login response:', loginResponse);
+      
+      const { access } = loginResponse;
+      
+      if (!access) {
+        console.error('No access token in loginResponse');
+        throw new Error('No access token received');
+      }
+      
+      console.log('Access token received:', access.substring(0, 50) + '...');
+      
+      // Save token to localStorage
+      localStorage.setItem('accessToken', access);
+      console.log('Token saved to localStorage');
+      
+      // Get user data
+      const userData = await authApi.getCurrentUser();
+      console.log('User data from /user/me/:', userData);
+      
+      // Map to your User type
+      const mappedUser = mapApiUserToUser(userData);
+      console.log('Mapped user:', mappedUser);
+      
+      // Set user state and store
+      setUser(mappedUser);
+      localStorage.setItem('user', JSON.stringify(mappedUser));
+      
+      console.log('Login successful!');
+      return true;
+      
+    } catch (error: any) {
+      console.error('Login failed:', error);
+      console.error('Error message:', error.message);
+      
+      // Clear storage on error
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async (): Promise<void> => {
+    try {
+      const refreshToken = localStorage.getItem('refreshToken');
+      console.log('1. Starting logout, refreshToken:', refreshToken ? 'present' : 'missing');
+      
+      if (refreshToken) {
+        console.log('2. Calling authApi.logout() with token');
+        await authApi.logout(refreshToken);
+        console.log('4. authApi.logout() completed');
+      } else {
+        console.log('2. No refresh token, skipping API call');
+      }
+    } catch (error) {
+      console.error('3. API logout error:', error);
+    } finally {
+      console.log('5. Clearing localStorage');
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      
+      setUser(null);
+      
+      console.log('6. Redirecting to login');
+      window.location.href = '/login';
+    }
+  };
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
+
+  const value: AppContextType = {
+    user,
+    users,
+    isAuthenticated: !!user,
+    isLoading,
+    language,
+    theme,
+    products,
+    customers,
+    cart,
+    sales,
+    productArrivals,
+    customerTransactions,
+    login,
+    logout,
+    setLanguage,
+    toggleTheme,
+    addToCart,
+    removeFromCart,
+    updateCartItem,
+    clearCart,
+    addSale,
+    addUser,
+    updateUser,
+    deleteUser,
+    addProductArrival,
+    updateProductArrival,
+    deleteProductArrival,
+    addCustomerTransaction,
+    updateCustomerTransaction,
+    deleteCustomerTransaction,
+    getCustomerBalance,
+  };
+
   return (
-    <AppContext.Provider
-      value={{
-        currentUser,
-        login,
-        logout,
-        language,
-        setLanguage,
-        theme,
-        toggleTheme,
-        products,
-        addProduct,
-        updateProduct,
-        deleteProduct,
-        cart,
-        addToCart,
-        updateCartItem,
-        removeFromCart,
-        clearCart,
-        sales,
-        completeSale,
-        updateSale,
-        productArrivals,
-        addProductArrival,
-        updateProductArrival,
-        deleteProductArrival,
-        customers,
-        addCustomer,
-        updateCustomer,
-        deleteCustomer,
-        customerTransactions,
-        addCustomerTransaction,
-        updateCustomerTransaction,
-        deleteCustomerTransaction,
-        getCustomerBalance,
-        users,
-        addUser,
-        updateUser,
-        deleteUser,
-      }}
-    >
+    <AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>
   );
@@ -549,8 +655,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
 export const useApp = () => {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useApp must be used within AppProvider');
+  if (context === undefined) {
+    throw new Error('useApp must be used within an AppProvider');
   }
   return context;
 };

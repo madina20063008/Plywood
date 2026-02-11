@@ -4,6 +4,56 @@ export type UserRole = 'salesperson' | 'admin' | 'manager';
 // Language types
 export type Language = 'uz' | 'ru';
 
+export interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+// In your types.ts, update LoginResponse:
+export interface LoginResponse {
+  success?: boolean;
+  message?: string;
+  data?: {
+    access: string;
+    refresh: string;
+    user: ApiUser;
+  };
+  // Keep these for backward compatibility
+  access?: string;
+  refresh?: string;
+  user?: ApiUser;
+}
+export interface LoginCredentials {
+  username: string;
+  password: string;
+}
+
+export interface ApiUser {
+  id: number;
+  username: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  role?: string;
+}
+
+export interface ApiError {
+  detail?: string;
+  non_field_errors?: string[];
+  username?: string[];
+  password?: string[];
+  [key: string]: any;
+}
+
+// Token refresh
+export interface TokenRefresh {
+  refresh: string;
+}
+
+export interface TokenRefreshResponse {
+  access: string;
+}
+
 // User type
 export interface User {
   id: string;

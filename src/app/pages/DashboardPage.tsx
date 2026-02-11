@@ -1,3 +1,4 @@
+// DashboardPage.tsx - Updated with null checks
 import React, { useMemo } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
@@ -9,27 +10,28 @@ import { format, subDays, startOfDay } from 'date-fns';
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
 export const DashboardPage: React.FC = () => {
-  const { sales, products, language } = useApp();
+  const { sales = [], products = [], language } = useApp(); // Add default values
 
   const t = (key: string) => getTranslation(language, key as any);
 
   const analytics = useMemo(() => {
-    // Calculate total revenue
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
-    const totalSales = sales.length;
+    // Calculate total revenue with null check
+    const totalRevenue = (sales || []).reduce((sum, sale) => sum + (sale?.total || 0), 0);
+    const totalSales = (sales || []).length;
 
     // Low stock products (less than 20)
-    const lowStockProducts = products.filter(p => p.stockQuantity < 20);
+    const lowStockProducts = (products || []).filter(p => (p?.stockQuantity || 0) < 20);
 
     // Revenue by day (last 7 days)
     const revenueByDay = Array.from({ length: 7 }, (_, i) => {
       const date = startOfDay(subDays(new Date(), 6 - i));
-      const dayRevenue = sales
+      const dayRevenue = (sales || [])
         .filter(sale => {
+          if (!sale?.createdAt) return false;
           const saleDate = startOfDay(new Date(sale.createdAt));
           return saleDate.getTime() === date.getTime();
         })
-        .reduce((sum, sale) => sum + sale.total, 0);
+        .reduce((sum, sale) => sum + (sale?.total || 0), 0);
 
       return {
         date: format(date, 'dd.MM'),
@@ -40,39 +42,41 @@ export const DashboardPage: React.FC = () => {
     // Top selling products
     const productSales: Record<string, { quantity: number; revenue: number; name: string }> = {};
     
-    sales.forEach(sale => {
-      sale.items.forEach(item => {
+    (sales || []).forEach(sale => {
+      (sale?.items || []).forEach(item => {
+        if (!item?.product?.id) return;
+        
         if (!productSales[item.product.id]) {
           productSales[item.product.id] = {
             quantity: 0,
             revenue: 0,
-            name: item.product.name,
+            name: item.product.name || 'Unknown',
           };
         }
-        productSales[item.product.id].quantity += item.quantity;
-        productSales[item.product.id].revenue += item.product.unitPrice * item.quantity;
+        productSales[item.product.id].quantity += (item?.quantity || 0);
+        productSales[item.product.id].revenue += (item?.product?.unitPrice || 0) * (item?.quantity || 0);
       });
     });
 
     const topProducts = Object.values(productSales)
-      .sort((a, b) => b.revenue - a.revenue)
+      .sort((a, b) => (b?.revenue || 0) - (a?.revenue || 0))
       .slice(0, 5);
 
     // Revenue by category
     const categoryRevenue: Record<string, number> = {};
     
-    sales.forEach(sale => {
-      sale.items.forEach(item => {
-        const category = item.product.category;
+    (sales || []).forEach(sale => {
+      (sale?.items || []).forEach(item => {
+        const category = item?.product?.category || 'Uncategorized';
         if (!categoryRevenue[category]) {
           categoryRevenue[category] = 0;
         }
-        categoryRevenue[category] += item.product.unitPrice * item.quantity;
+        categoryRevenue[category] += (item?.product?.unitPrice || 0) * (item?.quantity || 0);
       });
     });
 
     const revenueByCategory = Object.entries(categoryRevenue).map(([category, revenue]) => ({
-      category: t(category),
+      category: t(category) || category,
       revenue,
     }));
 
@@ -80,30 +84,31 @@ export const DashboardPage: React.FC = () => {
     let cuttingRevenue = 0;
     let edgeBandingRevenue = 0;
 
-    sales.forEach(sale => {
-      sale.items.forEach(item => {
-        if (item.cuttingService) {
-          cuttingRevenue += item.cuttingService.total;
+    (sales || []).forEach(sale => {
+      (sale?.items || []).forEach(item => {
+        if (item?.cuttingService) {
+          cuttingRevenue += (item.cuttingService?.total || 0);
         }
-        if (item.edgeBandingService) {
-          edgeBandingRevenue += item.edgeBandingService.total;
+        if (item?.edgeBandingService) {
+          edgeBandingRevenue += (item.edgeBandingService?.total || 0);
         }
       });
     });
 
     // Today's revenue
     const today = startOfDay(new Date());
-    const todayRevenue = sales
+    const todayRevenue = (sales || [])
       .filter(sale => {
+        if (!sale?.createdAt) return false;
         const saleDate = startOfDay(new Date(sale.createdAt));
         return saleDate.getTime() === today.getTime();
       })
-      .reduce((sum, sale) => sum + sale.total, 0);
+      .reduce((sum, sale) => sum + (sale?.total || 0), 0);
 
     return {
       totalRevenue,
       totalSales,
-      totalProducts: products.length,
+      totalProducts: (products || []).length,
       lowStockProducts: lowStockProducts.length,
       todayRevenue,
       revenueByDay,
@@ -238,7 +243,7 @@ export const DashboardPage: React.FC = () => {
                   cx="50%"
                   cy="50%"
                   outerRadius={100}
-                  label={(entry) => `${entry.category}: ${((entry.revenue / analytics.totalRevenue) * 100).toFixed(1)}%`}
+                  label={(entry) => `${entry.category}: ${((entry.revenue / (analytics.totalRevenue || 1)) * 100).toFixed(1)}%`}
                 >
                   {analytics.revenueByCategory.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -313,7 +318,7 @@ export const DashboardPage: React.FC = () => {
                   <div 
                     className="h-full bg-blue-600 dark:bg-blue-400 transition-all"
                     style={{ 
-                      width: `${(analytics.serviceRevenue.cutting / (analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding) * 100) || 0}%` 
+                      width: `${((analytics.serviceRevenue.cutting / (analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding) * 100) || 0)}%` 
                     }}
                   />
                 </div>
@@ -330,7 +335,7 @@ export const DashboardPage: React.FC = () => {
                   <div 
                     className="h-full bg-green-600 dark:bg-green-400 transition-all"
                     style={{ 
-                      width: `${(analytics.serviceRevenue.edgeBanding / (analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding) * 100) || 0}%` 
+                      width: `${((analytics.serviceRevenue.edgeBanding / (analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding) * 100) || 0)}%` 
                     }}
                   />
                 </div>
@@ -350,7 +355,7 @@ export const DashboardPage: React.FC = () => {
                   {language === 'uz' ? 'Xizmatlar ulushi' : 'Доля услуг'}
                 </p>
                 <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                  {((analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding) / analytics.totalRevenue * 100).toFixed(1)}%
+                  {((analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding) / (analytics.totalRevenue || 1) * 100).toFixed(1)}%
                 </p>
               </div>
             </div>

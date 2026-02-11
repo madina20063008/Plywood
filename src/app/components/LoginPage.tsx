@@ -18,23 +18,44 @@ export const LoginPage: React.FC = () => {
 
   const t = (key: string) => getTranslation(language, key as any);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
 
-    setTimeout(() => {
-      const success = login(username, password);
-      setIsLoading(false);
+  try {
+    const success = await login(username, password);
+    console.log('Login success:', success);
+    console.log('Will navigate to /dashboard');
+    console.log('Navigate function exists:', typeof navigate);
 
-      if (success) {
-        toast.success(t('loginSuccess'));
-        // Navigate to dashboard after successful login
-        navigate('/dashboard');
-      } else {
-        toast.error(t('loginError'));
-      }
-    }, 500);
-  };
+    if (success) {
+      toast.success(t('loginSuccess'));
+      
+      // Debug: Check current location
+      console.log('Current path before navigation:', window.location.pathname);
+      
+      // Try navigation
+      navigate('/dashboard');
+      console.log('Navigate function called');
+      
+      // Check immediately after
+      console.log('Path after navigation attempt:', window.location.pathname);
+      
+      // Force check after a delay
+      setTimeout(() => {
+        console.log('Path 500ms after navigation:', window.location.pathname);
+      }, 500);
+      
+    } else {
+      toast.error(t('loginError'));
+    }
+  } catch (error: any) {
+    console.error('Login error:', error);
+    toast.error(t('loginError'));
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
@@ -79,6 +100,7 @@ export const LoginPage: React.FC = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 autoFocus
+                disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
@@ -90,15 +112,25 @@ export const LoginPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                disabled={isLoading}
               />
             </div>
-            <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+            <Button 
+              type="submit" 
+              className="w-full" 
+              size="lg" 
+              disabled={isLoading}
+            >
               {isLoading ? (
-                language === 'uz' ? 'Yuklanmoqda...' : 'Загрузка...'
+                <>
+                  <span className="animate-spin mr-2">⟳</span>
+                  {language === 'uz' ? 'Kirilmoqda...' : 'Вход...'}
+                </>
               ) : (
                 t('login')
               )}
             </Button>
+            
           </form>
 
           <div className="mt-6 space-y-2 rounded-lg bg-muted p-4 text-sm">
@@ -107,6 +139,11 @@ export const LoginPage: React.FC = () => {
               <p><strong>{t('salesperson')}:</strong> sales1 / sales123</p>
               <p><strong>{t('admin')}:</strong> admin / admin123</p>
               <p><strong>{t('manager')}:</strong> manager / manager123</p>
+              <p className="text-muted-foreground italic mt-2">
+                {language === 'uz' 
+                  ? 'Haqiqiy API foydalanuvchilaridan foydalaning' 
+                  : 'Используйте реальных пользователей API'}
+              </p>
             </div>
           </div>
         </CardContent>

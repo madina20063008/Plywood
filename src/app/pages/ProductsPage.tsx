@@ -15,16 +15,18 @@ const categories = ['MDF', 'LDSP', 'DVP', 'DSP', 'OTHER'];
 const defaultImage = 'https://images.unsplash.com/photo-1644925757334-d0397c01518c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwbHl3b29kJTIwd29vZCUyMHBhbmVsJTIwdGV4dHVyZXxlbnwxfHx8fDE3NzAzNzcyMTR8MA&ixlib=rb-4.1.0&q=80&w=1080';
 
 export const ProductsPage: React.FC = () => {
-  const { products, addToCart, language, cart } = useApp();
+  // Add default value for products
+  const { products = [], addToCart, language, cart = [] } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const navigate = useNavigate();
 
   const t = (key: string) => getTranslation(language, key as any);
 
-  const filteredProducts = products.filter(product => {
-    if (!product.enabled) return false;
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+  // Add null check for products
+  const filteredProducts = (products || []).filter(product => {
+    if (!product?.enabled) return false;
+    const matchesSearch = product.name?.toLowerCase().includes(searchQuery.toLowerCase()) || false;
     const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -51,8 +53,8 @@ export const ProductsPage: React.FC = () => {
         <Button size="lg" onClick={() => navigate('/cart')} className="relative">
           <ShoppingCart className="mr-2 h-5 w-5" />
           {t('cart')}
-          {cart.length > 0 && (
-            <Badge className="ml-2 rounded-full px-2">{cart.length}</Badge>
+          {(cart || []).length > 0 && (
+            <Badge className="ml-2 rounded-full px-2">{(cart || []).length}</Badge>
           )}
         </Button>
       </div>
@@ -122,24 +124,24 @@ export const ProductsPage: React.FC = () => {
                     <div className="flex w-full items-center justify-between">
                       <div>
                         <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                          {product.unitPrice.toLocaleString()}
+                          {product.unitPrice?.toLocaleString() || '0'}
                         </p>
                         <p className="text-xs text-gray-500">UZS</p>
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-gray-600 dark:text-gray-400">{t('stock')}</p>
-                        <Badge variant={product.stockQuantity < 20 ? 'destructive' : 'default'}>
-                          {product.stockQuantity}
+                        <Badge variant={(product.stockQuantity || 0) < 20 ? 'destructive' : 'default'}>
+                          {product.stockQuantity || 0}
                         </Badge>
                       </div>
                     </div>
                     <Button 
                       className="w-full" 
                       onClick={() => handleAddToCart(product)}
-                      disabled={product.stockQuantity === 0}
+                      disabled={(product.stockQuantity || 0) === 0}
                     >
                       <ShoppingCart className="mr-2 h-4 w-4" />
-                      {product.stockQuantity === 0 ? t('outOfStock') : t('addToCart')}
+                      {(product.stockQuantity || 0) === 0 ? t('outOfStock') : t('addToCart')}
                     </Button>
                   </CardFooter>
                 </Card>
