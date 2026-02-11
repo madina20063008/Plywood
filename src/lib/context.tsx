@@ -1,7 +1,6 @@
-// context.tsx
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi } from '../lib/api';
-import { User, UserRole, Product, Customer, CartItem, Sale, ProductArrival, CustomerTransaction } from '../lib/types';
+import { authApi, customerApi } from '../lib/api';
+import { User, UserRole, Product, Customer, CartItem, Sale, ProductArrival, CustomerTransaction, ApiCustomer, CreateCustomerData } from '../lib/types';
 import { toast } from 'sonner';
 
 interface AppContextType {
@@ -40,6 +39,12 @@ interface AppContextType {
     totalPayments: number;
     balance: number;
   };
+  // Customer API functions
+  fetchCustomers: (search?: string) => Promise<void>;
+  addCustomer: (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateCustomer: (id: string, customerData: Partial<Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
+  isLoadingCustomers: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -51,6 +56,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
   
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
   const [language, setLanguage] = useState<'uz' | 'ru'>(() => {
     return (localStorage.getItem('language') as 'uz' | 'ru') || 'uz';
   });
@@ -219,27 +225,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     },
   ]);
 
-  // Initialize customers
-  const [customers, setCustomers] = useState<Customer[]>([
-    {
-      id: '1',
-      name: 'Иван Иванов',
-      phone: '+998901234567',
-      email: 'ivan@example.com',
-      address: 'ул. Ленина, 123',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: '2',
-      name: 'Мария Петрова',
-      phone: '+998907654321',
-      email: 'maria@example.com',
-      address: 'ул. Мира, 456',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ]);
+  // Initialize customers (empty array - will be fetched from API)
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   // Initialize cart
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -258,7 +245,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       purchasePrice: 70000,
       sellingPrice: 85000,
       totalInvestment: 3500000,
-      arrivalDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ago
+      arrivalDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
       notes: 'Первая партия',
       receivedBy: 'Дилшод Юсупов',
       createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -272,7 +259,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       purchasePrice: 68000,
       sellingPrice: 82000,
       totalInvestment: 2720000,
-      arrivalDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
+      arrivalDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
       notes: 'Качество премиум',
       receivedBy: 'Дилшод Юсупов',
       createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
@@ -317,16 +304,139 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     },
   ]);
 
+  // Map API customer to app Customer type
+  const mapApiCustomerToCustomer = (apiCustomer: ApiCustomer): Customer => {
+    return {
+      id: apiCustomer.id.toString(),
+      name: apiCustomer.full_name,
+      phone: apiCustomer.phone_number,
+      address: apiCustomer.location,
+      email: apiCustomer.about, // Using about field for email
+      notes: apiCustomer.description,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  // Map app Customer to API customer data
+  const mapCustomerToApiData = (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): CreateCustomerData => {
+    return {
+      full_name: customerData.name,
+      phone_number: customerData.phone,
+      location: customerData.address || '',
+      about: customerData.email || '',
+      description: customerData.notes || '',
+    };
+  };
+
+  // Fetch customers from API
+  const fetchCustomers = async (search?: string) => {
+    if (!user) return;
+    
+    setIsLoadingCustomers(true);
+    try {
+      const apiCustomers = await customerApi.getAll(search);
+      const mappedCustomers = apiCustomers.map(mapApiCustomerToCustomer);
+      setCustomers(mappedCustomers);
+    } catch (error) {
+      console.error('Failed to fetch customers:', error);
+      toast.error(language === 'uz' 
+        ? 'Mijozlarni yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке клиентов');
+    } finally {
+      setIsLoadingCustomers(false);
+    }
+  };
+
+  // Add customer via API
+  const addCustomer = async (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    try {
+      const apiData = mapCustomerToApiData(customerData);
+      const newApiCustomer = await customerApi.create(apiData);
+      const newCustomer = mapApiCustomerToCustomer(newApiCustomer);
+      
+      setCustomers(prev => [...prev, newCustomer]);
+      toast.success(language === 'uz' ? 'Mijoz qo\'shildi' : 'Клиент добавлен');
+    } catch (error) {
+      console.error('Failed to add customer:', error);
+      toast.error(language === 'uz' 
+        ? 'Mijoz qo\'shishda xatolik yuz berdi' 
+        : 'Ошибка при добавлении клиента');
+      throw error;
+    }
+  };
+
+  // Update customer via API
+  const updateCustomer = async (id: string, customerData: Partial<Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>>) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    try {
+      const apiData: Partial<CreateCustomerData> = {};
+      if (customerData.name) apiData.full_name = customerData.name;
+      if (customerData.phone) apiData.phone_number = customerData.phone;
+      if (customerData.address) apiData.location = customerData.address;
+      if (customerData.email) apiData.about = customerData.email;
+      if (customerData.notes) apiData.description = customerData.notes;
+
+      const updatedApiCustomer = await customerApi.update(parseInt(id), apiData);
+      const updatedCustomer = mapApiCustomerToCustomer(updatedApiCustomer);
+      
+      setCustomers(prev => prev.map(c => c.id === id ? updatedCustomer : c));
+      toast.success(language === 'uz' ? 'Mijoz yangilandi' : 'Клиент обновлен');
+    } catch (error) {
+      console.error('Failed to update customer:', error);
+      toast.error(language === 'uz' 
+        ? 'Mijoz yangilashda xatolik yuz berdi' 
+        : 'Ошибка при обновлении клиента');
+      throw error;
+    }
+  };
+
+  // Delete customer via API
+  const deleteCustomer = async (id: string) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    try {
+      await customerApi.delete(parseInt(id));
+      setCustomers(prev => prev.filter(c => c.id !== id));
+      toast.success(language === 'uz' ? 'Mijoz o\'chirildi' : 'Клиент удален');
+    } catch (error) {
+      console.error('Failed to delete customer:', error);
+      toast.error(language === 'uz' 
+        ? 'Mijoz o\'chirishda xatolik yuz berdi' 
+        : 'Ошибка при удалении клиента');
+      throw error;
+    }
+  };
+
+  // Fetch customers when user is authenticated
+  useEffect(() => {
+    if (user) {
+      fetchCustomers();
+    }
+  }, [user]);
+
   const mapApiUserToUser = (apiUser: any): User => {
     console.log('Mapping API user from /user/me/:', apiUser);
     
     const mapApiRole = (role: string): UserRole => {
       switch (role?.toLowerCase()) {
-        case 's': // SALER
+        case 's':
           return 'salesperson';
-        case 'a': // ADMIN
+        case 'a':
           return 'admin';
-        case 'm': // MANAGER
+        case 'm':
           return 'manager';
         default:
           console.warn('Unknown role:', role, 'defaulting to salesperson');
@@ -337,7 +447,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return {
       id: apiUser.id?.toString() || Date.now().toString(),
       username: apiUser.username || '',
-      password: '', // Never store password
+      password: '',
       role: mapApiRole(apiUser.role),
       name: apiUser.full_name || apiUser.username || '',
       createdAt: new Date().toISOString(),
@@ -426,7 +536,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addSale = (sale: Sale) => {
     setSales(prevSales => [sale, ...prevSales]);
     
-    // Update product stock quantities
     setProducts(prevProducts =>
       prevProducts.map(product => {
         const saleItem = sale.items.find(item => item.product.id === product.id);
@@ -451,7 +560,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     
     setProductArrivals(prev => [newArrival, ...prev]);
     
-    // Update product stock quantity
     setProducts(prevProducts =>
       prevProducts.map(product =>
         product.id === arrival.productId
@@ -530,11 +638,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       console.log('Starting login for:', username);
       
-      // Clear any existing tokens
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       
-      // Get access token
       const loginResponse = await authApi.login({ username, password });
       console.log('Login response:', loginResponse);
       
@@ -547,19 +653,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       
       console.log('Access token received:', access.substring(0, 50) + '...');
       
-      // Save token to localStorage
       localStorage.setItem('accessToken', access);
       console.log('Token saved to localStorage');
       
-      // Get user data
       const userData = await authApi.getCurrentUser();
       console.log('User data from /user/me/:', userData);
       
-      // Map to your User type
       const mappedUser = mapApiUserToUser(userData);
       console.log('Mapped user:', mappedUser);
       
-      // Set user state and store
       setUser(mappedUser);
       localStorage.setItem('user', JSON.stringify(mappedUser));
       
@@ -570,7 +672,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       console.error('Login failed:', error);
       console.error('Error message:', error.message);
       
-      // Clear storage on error
       localStorage.removeItem('accessToken');
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('user');
@@ -617,6 +718,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     users,
     isAuthenticated: !!user,
     isLoading,
+    isLoadingCustomers,
     language,
     theme,
     products,
@@ -644,6 +746,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     updateCustomerTransaction,
     deleteCustomerTransaction,
     getCustomerBalance,
+    fetchCustomers,
+    addCustomer,
+    updateCustomer,
+    deleteCustomer,
   };
 
   return (

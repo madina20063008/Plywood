@@ -192,3 +192,21 @@ export interface CustomerTransaction {
   processedBy: string; // User who processed the transaction
   createdAt: string;
 }
+
+// Customer API
+export interface ApiCustomer {
+  id: number;
+  full_name: string;
+  phone_number: string;
+  location: string;
+  about: string;
+  description: string;
+}
+
+export interface CreateCustomerData {
+  full_name: string;
+  phone_number: string;
+  location: string;
+  about: string;
+  description: string;
+}

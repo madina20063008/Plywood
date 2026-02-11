@@ -1,4 +1,4 @@
-import { LoginCredentials } from "./types";
+import { ApiCustomer, CreateCustomerData, LoginCredentials } from "./types";
 
 // api.ts
 const API_BASE_URL = 'https://plywood.pythonanywhere.com';
@@ -46,10 +46,15 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
     throw new Error(`API Error (${response.status}): ${errorText}`);
   }
 
+  // Handle 204 No Content
+  if (response.status === 204) {
+    return {} as T;
+  }
+
   return response.json();
 }
 
-// api.ts - Update the login function
+// Auth API
 export const authApi = {
   login: async (credentials: LoginCredentials): Promise<{access: string}> => {
     const response = await apiRequest<{
@@ -67,11 +72,9 @@ export const authApi = {
 
     console.log('API login response structure:', response);
     
-    // Extract access token from nested data property
     if (response.data && response.data.access) {
       return { access: response.data.access };
     } else if (response.access) {
-      // Fallback: in case response structure changes
       return { access: response.access };
     } else {
       throw new Error('No access token found in response');
@@ -86,6 +89,40 @@ export const authApi = {
     return apiRequest('/user/logout/', {
       method: 'POST',
       body: JSON.stringify({ refresh: refreshToken }),
+    });
+  },
+};
+
+
+export const customerApi = {
+  // Get all customers with optional search
+  getAll: (search?: string): Promise<ApiCustomer[]> => {
+    const endpoint = search 
+      ? `/customer/customer/?search=${encodeURIComponent(search)}`
+      : '/customer/customer/';
+    return apiRequest<ApiCustomer[]>(endpoint);
+  },
+
+  // Create new customer
+  create: (data: CreateCustomerData): Promise<ApiCustomer> => {
+    return apiRequest<ApiCustomer>('/customer/customer/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update customer
+  update: (id: number, data: Partial<CreateCustomerData>): Promise<ApiCustomer> => {
+    return apiRequest<ApiCustomer>(`/customer/customer/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete customer
+  delete: (id: number): Promise<void> => {
+    return apiRequest<void>(`/customer/customer/${id}/`, {
+      method: 'DELETE',
     });
   },
 };

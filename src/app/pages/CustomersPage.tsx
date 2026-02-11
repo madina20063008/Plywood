@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
 import { Customer } from '../../lib/types';
@@ -9,11 +9,22 @@ import { Textarea } from '../components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { UserPlus, Edit, Trash2, Users, Search } from 'lucide-react';
+import { UserPlus, Edit, Trash2, Users, Search, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const CustomersPage: React.FC = () => {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, language, getCustomerBalance } = useApp();
+  const { 
+    customers, 
+    fetchCustomers, 
+    addCustomer, 
+    updateCustomer, 
+    deleteCustomer, 
+    language, 
+    getCustomerBalance,
+    isLoadingCustomers,
+    user
+  } = useApp();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -28,10 +39,25 @@ export const CustomersPage: React.FC = () => {
 
   const t = (key: string) => getTranslation(language, key as any);
 
-  const filteredCustomers = customers.filter(customer =>
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm)
-  );
+  // Search customers with debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (user) {
+        fetchCustomers(searchTerm);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, user]);
+
+  // Initial fetch
+  useEffect(() => {
+    if (user) {
+      fetchCustomers();
+    }
+  }, [user]);
+
+  const filteredCustomers = customers; // Search is handled by API
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat(language === 'uz' ? 'uz-UZ' : 'ru-RU').format(amount);
@@ -54,26 +80,30 @@ export const CustomersPage: React.FC = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!formData.name || !formData.phone) {
       toast.error(language === 'uz' ? 'Ism va telefon raqami talab qilinadi' : 'Имя и телефон обязательны');
       return;
     }
 
-    addCustomer({
-      name: formData.name,
-      phone: formData.phone,
-      address: formData.address || undefined,
-      email: formData.email || undefined,
-      notes: formData.notes || undefined,
-    });
+    try {
+      await addCustomer({
+        name: formData.name,
+        phone: formData.phone,
+        address: formData.address || undefined,
+        email: formData.email || undefined,
+        notes: formData.notes || undefined,
+      });
 
-    toast.success(t('customerAdded'));
-    setIsAddDialogOpen(false);
-    setFormData({ name: '', phone: '', address: '', email: '', notes: '' });
+      toast.success(t('customerAdded'));
+      setIsAddDialogOpen(false);
+      setFormData({ name: '', phone: '', address: '', email: '', notes: '' });
+    } catch (error) {
+      // Error is already handled in context
+    }
   };
 
-  const handleEdit = () => {
+  const handleEdit = async () => {
     if (!selectedCustomer) return;
 
     if (!formData.name || !formData.phone) {
@@ -81,26 +111,38 @@ export const CustomersPage: React.FC = () => {
       return;
     }
 
-    updateCustomer(selectedCustomer.id, {
-      name: formData.name,
-      phone: formData.phone,
-      address: formData.address || undefined,
-      email: formData.email || undefined,
-      notes: formData.notes || undefined,
-    });
+    try {
+      await updateCustomer(selectedCustomer.id, {
+        name: formData.name,
+        phone: formData.phone,
+        address: formData.address || undefined,
+        email: formData.email || undefined,
+        notes: formData.notes || undefined,
+      });
 
-    toast.success(t('customerUpdated'));
-    setIsEditDialogOpen(false);
-    setSelectedCustomer(null);
+      toast.success(t('customerUpdated'));
+      setIsEditDialogOpen(false);
+      setSelectedCustomer(null);
+    } catch (error) {
+      // Error is already handled in context
+    }
   };
 
-  const handleDelete = (customer: Customer) => {
+  const handleDelete = async (customer: Customer) => {
     if (confirm(language === 'uz' 
       ? `${customer.name} mijozini o'chirmoqchimisiz?` 
       : `Удалить клиента ${customer.name}?`)) {
-      deleteCustomer(customer.id);
-      toast.success(t('customerDeleted'));
+      try {
+        await deleteCustomer(customer.id);
+        toast.success(t('customerDeleted'));
+      } catch (error) {
+        // Error is already handled in context
+      }
     }
+  };
+
+  const handleRefresh = () => {
+    fetchCustomers(searchTerm);
   };
 
   return (
@@ -117,10 +159,13 @@ export const CustomersPage: React.FC = () => {
               : 'Управление постоянными клиентами'}
           </p>
         </div>
-        <Button onClick={handleAddClick}>
-          <UserPlus className="mr-2 h-4 w-4" />
-          {t('addCustomer')}
-        </Button>
+        <div className="flex gap-2">
+          
+          <Button onClick={handleAddClick} disabled={isLoadingCustomers}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            {t('addCustomer')}
+          </Button>
+        </div>
       </div>
 
       {/* Stats Card */}
@@ -158,6 +203,11 @@ export const CustomersPage: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle>{t('search')}</CardTitle>
+          <CardDescription>
+            {language === 'uz' 
+              ? 'Ism yoki telefon raqami bo\'yicha qidirish' 
+              : 'Поиск по имени или номеру телефона'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="relative">
@@ -176,12 +226,32 @@ export const CustomersPage: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle>{language === 'uz' ? 'Mijozlar ro\'yxati' : 'Список клиентов'}</CardTitle>
+          <CardDescription>
+            {customers.length} {language === 'uz' ? 'ta mijoz' : 'клиентов'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          {filteredCustomers.length === 0 ? (
+          {isLoadingCustomers ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : filteredCustomers.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Users className="h-12 w-12 text-gray-400 mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">{t('noCustomers')}</p>
+              <p className="text-gray-500 dark:text-gray-400">
+                {searchTerm 
+                  ? (language === 'uz' ? 'Hech narsa topilmadi' : 'Ничего не найдено')
+                  : t('noCustomers')}
+              </p>
+              {searchTerm && (
+                <Button 
+                  variant="link" 
+                  onClick={() => setSearchTerm('')}
+                  className="mt-2"
+                >
+                  {language === 'uz' ? 'Tozalash' : 'Очистить'}
+                </Button>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -216,6 +286,7 @@ export const CustomersPage: React.FC = () => {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleEditClick(customer)}
+                              disabled={isLoadingCustomers}
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -223,6 +294,7 @@ export const CustomersPage: React.FC = () => {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDelete(customer)}
+                              disabled={isLoadingCustomers}
                             >
                               <Trash2 className="h-4 w-4 text-red-600" />
                             </Button>
@@ -265,7 +337,7 @@ export const CustomersPage: React.FC = () => {
                 id="phone"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+998 90 123 45 67"
+                placeholder="+998901234567"
               />
             </div>
             <div className="space-y-2">
@@ -302,7 +374,16 @@ export const CustomersPage: React.FC = () => {
             <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
               {t('cancel')}
             </Button>
-            <Button onClick={handleAdd}>{t('add')}</Button>
+            <Button onClick={handleAdd} disabled={isLoadingCustomers}>
+              {isLoadingCustomers ? (
+                <>
+                  <span className="animate-spin mr-2">⟳</span>
+                  {language === 'uz' ? 'Qo\'shilmoqda...' : 'Добавление...'}
+                </>
+              ) : (
+                t('add')
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -366,7 +447,16 @@ export const CustomersPage: React.FC = () => {
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
               {t('cancel')}
             </Button>
-            <Button onClick={handleEdit}>{t('save')}</Button>
+            <Button onClick={handleEdit} disabled={isLoadingCustomers}>
+              {isLoadingCustomers ? (
+                <>
+                  <span className="animate-spin mr-2">⟳</span>
+                  {language === 'uz' ? 'Saqlanmoqda...' : 'Сохранение...'}
+                </>
+              ) : (
+                t('save')
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
