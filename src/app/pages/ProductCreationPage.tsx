@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
@@ -7,59 +7,219 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const categories = ['MDF', 'LDSP', 'DVP', 'DSP', 'OTHER'];
-const qualities = ['Премиум', 'Стандарт', 'Эконом'];
+const qualities = [
+  { value: 'standard', label: 'Standard' },
+  { value: 'economic', label: 'Economic' },
+  { value: 'premium', label: 'Premium' }
+];
 
 export const ProductCreationPage: React.FC = () => {
-  const { addProduct, language } = useApp();
+  const { 
+    addProduct, 
+    isAddingProduct, 
+    language, 
+    categories, 
+    fetchCategories,
+    isFetchingCategories 
+  } = useApp();
+  
   const navigate = useNavigate();
+  
+  // Use string values for inputs to allow empty state
   const [formData, setFormData] = useState({
     name: '',
-    category: 'LDSP',
+    category: '',
     color: '#000000',
-    width: 2700,
-    height: 1000,
-    thickness: 16,
-    quality: 'Стандарт',
-    enabled: true,
+    width: '',
+    height: '',
+    thickness: '',
+    quality: 'standard' as 'standard' | 'economic' | 'premium',
+    description: '',
   });
 
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
   const t = (key: string) => getTranslation(language, key as any);
+
+  // Fetch categories on component mount
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  // Set default category when categories are loaded
+  useEffect(() => {
+    if (categories.length > 0 && !formData.category) {
+      setFormData(prev => ({ ...prev, category: categories[0].name }));
+    }
+  }, [categories]);
 
   const resetForm = () => {
     setFormData({
       name: '',
-      category: 'LDSP',
+      category: categories[0]?.name || '',
       color: '#000000',
-      width: 2700,
-      height: 1000,
-      thickness: 16,
-      quality: 'Стандарт',
-      enabled: true,
+      width: '',
+      height: '',
+      thickness: '',
+      quality: 'standard',
+      description: '',
     });
+    setErrors({});
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.name.trim()) {
+      newErrors.name = language === 'uz' 
+        ? 'Mahsulot nomi kiritilishi shart'
+        : 'Название продукта обязательно';
+    }
+
+    if (!formData.category) {
+      newErrors.category = language === 'uz'
+        ? 'Kategoriya tanlanishi shart'
+        : 'Категория должна быть выбрана';
+    }
+
+    // Validate width
+    if (!formData.width.trim()) {
+      newErrors.width = language === 'uz'
+        ? 'Kenglik kiritilishi shart'
+        : 'Ширина должна быть введена';
+    } else {
+      const widthNum = Number(formData.width);
+      if (isNaN(widthNum) || widthNum <= 0) {
+        newErrors.width = language === 'uz'
+          ? 'Kenglik musbat son bo\'lishi kerak'
+          : 'Ширина должна быть положительным числом';
+      }
+    }
+
+    // Validate height
+    if (!formData.height.trim()) {
+      newErrors.height = language === 'uz'
+        ? 'Balandlik kiritilishi shart'
+        : 'Высота должна быть введена';
+    } else {
+      const heightNum = Number(formData.height);
+      if (isNaN(heightNum) || heightNum <= 0) {
+        newErrors.height = language === 'uz'
+          ? 'Balandlik musbat son bo\'lishi kerak'
+          : 'Высота должна быть положительным числом';
+      }
+    }
+
+    // Validate thickness
+    if (!formData.thickness.trim()) {
+      newErrors.thickness = language === 'uz'
+        ? 'Qalinlik kiritilishi shart'
+        : 'Толщина должна быть введена';
+    } else {
+      const thicknessNum = Number(formData.thickness);
+      if (isNaN(thicknessNum) || thicknessNum <= 0) {
+        newErrors.thickness = language === 'uz'
+          ? 'Qalinlik musbat son bo\'lishi kerak'
+          : 'Толщина должна быть положительным числом';
+      }
+    }
+
+    const hexColorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+    if (!hexColorRegex.test(formData.color)) {
+      newErrors.color = language === 'uz'
+        ? 'Rang formati noto\'g\'ri (masalan: #000000)'
+        : 'Неверный формат цвета (например: #000000)';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Create product with default values for price and stock
-    addProduct({
-      ...formData,
-      unitPrice: 0,
-      stockQuantity: 0,
-      purchasePrice: 0,
-    });
+    if (!validateForm()) {
+      toast.error(language === 'uz' 
+        ? 'Formani to\'g\'ri to\'ldiring'
+        : 'Заполните форму правильно'
+      );
+      return;
+    }
     
-    toast.success(language === 'uz' 
-      ? 'Mahsulot muvaffaqiyatli yaratildi. Kelish narxi va miqdorini "Mahsulot qabul qilish" sahifasida kiriting.'
-      : 'Продукт успешно создан. Введите цену поступления и количество на странице "Приём товара".'
-    );
-    
-    resetForm();
+    try {
+      // Convert string values to numbers for the API
+      await addProduct({
+        name: formData.name,
+        category: formData.category,
+        color: formData.color,
+        width: Number(formData.width),
+        height: Number(formData.height),
+        thickness: Number(formData.thickness),
+        quality: formData.quality,
+        description: formData.description,
+        unitPrice: 0,
+        stockQuantity: 0,
+        purchasePrice: 0,
+      });
+      
+      toast.success(language === 'uz' 
+        ? 'Mahsulot muvaffaqiyatli yaratildi'
+        : 'Продукт успешно создан'
+      );
+      
+      toast.info(language === 'uz' 
+        ? 'Kelish narxi va miqdorini "Mahsulot qabul qilish" sahifasida kiriting.'
+        : 'Введите цену поступления и количество на странице "Приём товара".',
+        { duration: 5000 }
+      );
+      
+      setTimeout(() => {
+        navigate('/inventory');
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Product creation error:', error);
+    }
   };
+
+  const handleCancel = () => {
+    if (formData.name || formData.description || formData.width !== '0' || formData.height !== '0' || formData.thickness !== '0') {
+      if (window.confirm(language === 'uz' 
+        ? 'O\'zgarishlar saqlanmaydi. Chiqishni xohlaysizmi?'
+        : 'Изменения не будут сохранены. Вы хотите выйти?'
+      )) {
+        navigate('/inventory');
+      }
+    } else {
+      navigate('/inventory');
+    }
+  };
+
+  const handleNumberInput = (field: 'width' | 'height' | 'thickness', value: string) => {
+    // Allow empty string, numbers, and decimal point
+    if (value === '' || /^\d*\.?\d*$/.test(value)) {
+      setFormData({ ...formData, [field]: value });
+    }
+  };
+
+  const getQualityLabel = (value: string) => {
+    const quality = qualities.find(q => q.value === value);
+    return quality ? quality.label : value;
+  };
+
+  if (isFetchingCategories) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <span className="ml-2 text-gray-500">
+          {language === 'uz' ? 'Kategoriyalar yuklanmoqda...' : 'Загрузка категорий...'}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -67,7 +227,8 @@ export const ProductCreationPage: React.FC = () => {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate('/inventory')}
+          onClick={handleCancel}
+          disabled={isAddingProduct}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
           {language === 'uz' ? 'Orqaga' : 'Назад'}
@@ -94,48 +255,81 @@ export const ProductCreationPage: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Product Name */}
             <div>
-              <Label htmlFor="name">{t('productName')}</Label>
+              <Label htmlFor="name">
+                {t('productName')}
+                <span className="text-red-500 ml-1">*</span>
+              </Label>
               <Input
                 id="name"
+                type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder={language === 'uz' ? 'Masalan: LDSP Qora' : 'Например: LDSP Черный'}
+                disabled={isAddingProduct}
+                className={errors.name ? 'border-red-500' : ''}
                 required
               />
+              {errors.name && (
+                <p className="text-sm text-red-500 mt-1">{errors.name}</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Category */}
+              {/* Category - From API */}
               <div>
-                <Label htmlFor="category">{t('category')}</Label>
+                <Label htmlFor="category">
+                  {t('category')}
+                  <span className="text-red-500 ml-1">*</span>
+                </Label>
                 <Select 
                   value={formData.category} 
                   onValueChange={(value) => setFormData({ ...formData, category: value })}
+                  disabled={isAddingProduct || categories.length === 0}
                 >
-                  <SelectTrigger>
-                    <SelectValue />
+                  <SelectTrigger className={errors.category ? 'border-red-500' : ''}>
+                    <SelectValue placeholder={language === 'uz' ? 'Kategoriyani tanlang' : 'Выберите категорию'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map(cat => (
-                      <SelectItem key={cat} value={cat}>{t(cat)}</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.name}>
+                        {cat.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.category && (
+                  <p className="text-sm text-red-500 mt-1">{errors.category}</p>
+                )}
+                {categories.length === 0 && (
+                  <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-1">
+                    {language === 'uz' 
+                      ? 'Kategoriyalar topilmadi. Avval kategoriya yarating.' 
+                      : 'Категории не найдены. Сначала создайте категорию.'}
+                  </p>
+                )}
               </div>
 
               {/* Quality */}
               <div>
-                <Label htmlFor="quality">{t('quality')}</Label>
+                <Label htmlFor="quality">
+                  {t('quality')}
+                  <span className="text-red-500 ml-1">*</span>
+                </Label>
                 <Select 
                   value={formData.quality} 
-                  onValueChange={(value) => setFormData({ ...formData, quality: value })}
+                  onValueChange={(value: 'standard' | 'economic' | 'premium') => 
+                    setFormData({ ...formData, quality: value })
+                  }
+                  disabled={isAddingProduct}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {qualities.map(q => (
-                      <SelectItem key={q} value={q}>{q}</SelectItem>
+                    {qualities.map((q) => (
+                      <SelectItem key={q.value} value={q.value}>
+                        {q.label}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -144,7 +338,10 @@ export const ProductCreationPage: React.FC = () => {
 
             {/* Color */}
             <div>
-              <Label htmlFor="color">{t('color')}</Label>
+              <Label htmlFor="color">
+                {t('color')}
+                <span className="text-red-500 ml-1">*</span>
+              </Label>
               <div className="flex gap-3">
                 <Input
                   id="color"
@@ -152,25 +349,34 @@ export const ProductCreationPage: React.FC = () => {
                   value={formData.color}
                   onChange={(e) => setFormData({ ...formData, color: e.target.value })}
                   className="h-12 w-24 cursor-pointer"
+                  disabled={isAddingProduct}
                 />
                 <Input
                   type="text"
                   value={formData.color}
                   onChange={(e) => setFormData({ ...formData, color: e.target.value })}
                   placeholder="#000000"
-                  className="flex-1"
+                  className={`flex-1 ${errors.color ? 'border-red-500' : ''}`}
+                  disabled={isAddingProduct}
                 />
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {language === 'uz' 
-                  ? 'Rangni tanlang yoki HEX kod kiriting' 
-                  : 'Выберите цвет или введите HEX код'}
-              </p>
+              {errors.color ? (
+                <p className="text-sm text-red-500 mt-1">{errors.color}</p>
+              ) : (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {language === 'uz' 
+                    ? 'Rangni tanlang yoki HEX kod kiriting' 
+                    : 'Выберите цвет или введите HEX код'}
+                </p>
+              )}
             </div>
 
-            {/* Dimensions */}
+            {/* Dimensions - Fixed to allow deleting */}
             <div>
-              <Label className="mb-2 block">{t('dimensions')}</Label>
+              <Label className="mb-2 block">
+                {t('dimensions')}
+                <span className="text-red-500 ml-1">*</span>
+              </Label>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="width" className="text-sm text-gray-600 dark:text-gray-400">
@@ -178,12 +384,18 @@ export const ProductCreationPage: React.FC = () => {
                   </Label>
                   <Input
                     id="width"
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={formData.width}
-                    onChange={(e) => setFormData({ ...formData, width: Number(e.target.value) })}
+                    onChange={(e) => handleNumberInput('width', e.target.value)}
+                    placeholder="2700"
+                    disabled={isAddingProduct}
+                    className={errors.width ? 'border-red-500' : ''}
                     required
-                    min="1"
                   />
+                  {errors.width && (
+                    <p className="text-sm text-red-500 mt-1">{errors.width}</p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="height" className="text-sm text-gray-600 dark:text-gray-400">
@@ -191,12 +403,18 @@ export const ProductCreationPage: React.FC = () => {
                   </Label>
                   <Input
                     id="height"
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={formData.height}
-                    onChange={(e) => setFormData({ ...formData, height: Number(e.target.value) })}
+                    onChange={(e) => handleNumberInput('height', e.target.value)}
+                    placeholder="1000"
+                    disabled={isAddingProduct}
+                    className={errors.height ? 'border-red-500' : ''}
                     required
-                    min="1"
                   />
+                  {errors.height && (
+                    <p className="text-sm text-red-500 mt-1">{errors.height}</p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="thickness" className="text-sm text-gray-600 dark:text-gray-400">
@@ -204,14 +422,38 @@ export const ProductCreationPage: React.FC = () => {
                   </Label>
                   <Input
                     id="thickness"
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={formData.thickness}
-                    onChange={(e) => setFormData({ ...formData, thickness: Number(e.target.value) })}
+                    onChange={(e) => handleNumberInput('thickness', e.target.value)}
+                    placeholder="16"
+                    disabled={isAddingProduct}
+                    className={errors.thickness ? 'border-red-500' : ''}
                     required
-                    min="1"
                   />
+                  {errors.thickness && (
+                    <p className="text-sm text-red-500 mt-1">{errors.thickness}</p>
+                  )}
                 </div>
               </div>
+            </div>
+
+            {/* Description */}
+            <div>
+              <Label htmlFor="description">
+                {language === 'uz' ? 'Tavsif' : 'Описание'}
+              </Label>
+              <Input
+                id="description"
+                type="text"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder={language === 'uz' 
+                  ? 'Mahsulot haqida qo\'shimcha ma\'lumot' 
+                  : 'Дополнительная информация о продукте'
+                }
+                disabled={isAddingProduct}
+              />
             </div>
 
             {/* Preview */}
@@ -229,11 +471,16 @@ export const ProductCreationPage: React.FC = () => {
                     {formData.name || (language === 'uz' ? 'Mahsulot nomi' : 'Название продукта')}
                   </p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {t(formData.category)} • {formData.quality}
+                    {formData.category || (language === 'uz' ? 'Kategoriya' : 'Категория')} • {getQualityLabel(formData.quality)}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                    {formData.width} × {formData.height} × {formData.thickness} mm
+                    {formData.width || '0'} × {formData.height || '0'} × {formData.thickness || '0'} mm
                   </p>
+                  {formData.description && (
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                      {formData.description}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -252,13 +499,26 @@ export const ProductCreationPage: React.FC = () => {
               <Button 
                 type="button" 
                 variant="outline" 
-                onClick={() => navigate('/inventory')}
+                onClick={handleCancel}
+                disabled={isAddingProduct}
               >
                 {t('cancel')}
               </Button>
-              <Button type="submit">
-                <Plus className="mr-2 h-4 w-4" />
-                {language === 'uz' ? 'Mahsulot yaratish' : 'Создать продукт'}
+              <Button 
+                type="submit" 
+                disabled={isAddingProduct || categories.length === 0}
+              >
+                {isAddingProduct ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {language === 'uz' ? 'Yaratilmoqda...' : 'Создание...'}
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    {language === 'uz' ? 'Mahsulot yaratish' : 'Создать продукт'}
+                  </>
+                )}
               </Button>
             </div>
           </form>

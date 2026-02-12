@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi, customerApi, userApi } from '../lib/api';
+import { 
+  authApi, 
+  customerApi, 
+  userApi, 
+  productApi, 
+  categoryApi 
+} from '../lib/api';
 import { 
   User, 
   UserRole, 
@@ -12,7 +18,11 @@ import {
   ApiCustomer, 
   CreateCustomerData,
   ApiUser,
-  CreateUserData 
+  CreateUserData,
+  ApiProduct,
+  CreateProductData,
+  ProductFilters,
+  ApiCategory
 } from '../lib/types';
 import { toast } from 'sonner';
 
@@ -29,23 +39,42 @@ interface AppContextType {
   sales: Sale[];
   productArrivals: ProductArrival[];
   customerTransactions: CustomerTransaction[];
+  categories: ApiCategory[];
+  
+  // Auth functions
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   setLanguage: (language: 'uz' | 'ru') => void;
   toggleTheme: () => void;
+  
+  // Cart functions
   addToCart: (item: CartItem) => void;
   removeFromCart: (itemId: string) => void;
   updateCartItem: (itemId: string, quantity: number) => void;
   clearCart: () => void;
   addSale: (sale: Sale) => void;
+  
   // User API functions
   fetchUsers: () => Promise<void>;
   addUser: (userData: Omit<User, 'id' | 'createdAt'>) => Promise<void>;
   updateUser: (id: string, userData: Partial<Omit<User, 'id' | 'createdAt'>>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
+  
+  // Product API functions
+  fetchProducts: (filters?: ProductFilters) => Promise<void>;
+  addProduct: (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateProduct: (id: string, productData: Partial<Omit<Product, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
+  
+  // Category API functions
+  fetchCategories: (search?: string) => Promise<void>;
+  
+  // Product Arrival functions
   addProductArrival: (arrival: Omit<ProductArrival, 'id' | 'createdAt'>) => void;
   updateProductArrival: (id: string, arrival: Partial<ProductArrival>) => void;
   deleteProductArrival: (id: string) => void;
+  
+  // Customer Transaction functions
   addCustomerTransaction: (transaction: Omit<CustomerTransaction, 'id' | 'createdAt'>) => void;
   updateCustomerTransaction: (id: string, transaction: Partial<CustomerTransaction>) => void;
   deleteCustomerTransaction: (id: string) => void;
@@ -54,12 +83,14 @@ interface AppContextType {
     totalPayments: number;
     balance: number;
   };
-  // Customer API functions with separate loading states
+  
+  // Customer API functions
   fetchCustomers: (search?: string) => Promise<void>;
   addCustomer: (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateCustomer: (id: string, customerData: Partial<Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
-  // Separate loading states
+  
+  // Loading states
   isFetchingCustomers: boolean;
   isAddingCustomer: boolean;
   isUpdatingCustomer: boolean;
@@ -68,6 +99,11 @@ interface AppContextType {
   isAddingUser: boolean;
   isUpdatingUser: boolean;
   isDeletingUser: boolean;
+  isFetchingProducts: boolean;
+  isAddingProduct: boolean;
+  isUpdatingProduct: boolean;
+  isDeletingProduct: boolean;
+  isFetchingCategories: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -92,6 +128,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isUpdatingUser, setIsUpdatingUser] = useState(false);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   
+  // Separate loading states for product operations
+  const [isFetchingProducts, setIsFetchingProducts] = useState(false);
+  const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const [isUpdatingProduct, setIsUpdatingProduct] = useState(false);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
+  
+  // Separate loading states for category operations
+  const [isFetchingCategories, setIsFetchingCategories] = useState(false);
+  
   const [language, setLanguage] = useState<'uz' | 'ru'>(() => {
     return (localStorage.getItem('language') as 'uz' | 'ru') || 'uz';
   });
@@ -100,244 +145,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
   });
 
-  // Initialize users as empty array - will be fetched from API
+  // State
   const [users, setUsers] = useState<User[]>([]);
-
-  // Initialize products
-  const [products, setProducts] = useState<Product[]>([
-    {
-      id: '1',
-      name: 'LDSP Черный',
-      category: 'LDSP',
-      color: '#000000',
-      width: 2700,
-      height: 1000,
-      thickness: 16,
-      quality: 'Премиум',
-      purchasePrice: 70000,
-      unitPrice: 85000,
-      stockQuantity: 45,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: '2',
-      name: 'LDSP Белый',
-      category: 'LDSP',
-      color: '#FFFFFF',
-      width: 2700,
-      height: 1000,
-      thickness: 16,
-      quality: 'Премиум',
-      purchasePrice: 68000,
-      unitPrice: 82000,
-      stockQuantity: 38,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: '3',
-      name: 'MDF Серый',
-      category: 'MDF',
-      color: '#808080',
-      width: 2440,
-      height: 1220,
-      thickness: 18,
-      quality: 'Стандарт',
-      purchasePrice: 62000,
-      unitPrice: 75000,
-      stockQuantity: 22,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: '4',
-      name: 'DVP Коричневый',
-      category: 'DVP',
-      color: '#8B4513',
-      width: 2750,
-      height: 1700,
-      thickness: 3,
-      quality: 'Эконом',
-      purchasePrice: 28000,
-      unitPrice: 35000,
-      stockQuantity: 67,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: '5',
-      name: 'DSP Бежевый',
-      category: 'DSP',
-      color: '#F5F5DC',
-      width: 2800,
-      height: 2070,
-      thickness: 22,
-      quality: 'Стандарт',
-      purchasePrice: 78000,
-      unitPrice: 95000,
-      stockQuantity: 18,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: '6',
-      name: 'LDSP Синий',
-      category: 'LDSP',
-      color: '#1E40AF',
-      width: 2700,
-      height: 1000,
-      thickness: 16,
-      quality: 'Премиум',
-      purchasePrice: 72000,
-      unitPrice: 87000,
-      stockQuantity: 30,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: '7',
-      name: 'MDF Зеленый',
-      category: 'MDF',
-      color: '#059669',
-      width: 2440,
-      height: 1220,
-      thickness: 18,
-      quality: 'Пемиум',
-      purchasePrice: 64000,
-      unitPrice: 78000,
-      stockQuantity: 15,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    {
-      id: '8',
-      name: 'LDSP Красный',
-      category: 'LDSP',
-      color: '#DC2626',
-      width: 2700,
-      height: 1000,
-      thickness: 16,
-      quality: 'Стандарт',
-      purchasePrice: 68000,
-      unitPrice: 83000,
-      stockQuantity: 12,
-      enabled: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ]);
-
-  // Initialize customers (empty array - will be fetched from API)
+  const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-
-  // Initialize cart
+  const [categories, setCategories] = useState<ApiCategory[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
-  
-  // Initialize sales
   const [sales, setSales] = useState<Sale[]>([]);
+  const [productArrivals, setProductArrivals] = useState<ProductArrival[]>([]);
+  const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([]);
 
-  // Initialize product arrivals
-  const [productArrivals, setProductArrivals] = useState<ProductArrival[]>([
-    {
-      id: '1',
-      productId: '1',
-      productName: 'LDSP Черный',
-      category: 'LDSP',
-      quantity: 50,
-      purchasePrice: 70000,
-      sellingPrice: 85000,
-      totalInvestment: 3500000,
-      arrivalDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Первая партия',
-      receivedBy: 'Дилшод Юсупов',
-      createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: '2',
-      productId: '2',
-      productName: 'LDSP Белый',
-      category: 'LDSP',
-      quantity: 40,
-      purchasePrice: 68000,
-      sellingPrice: 82000,
-      totalInvestment: 2720000,
-      arrivalDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-      notes: 'Качество премиум',
-      receivedBy: 'Дилшод Юсупов',
-      createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-  ]);
-
-  // Initialize customer transactions
-  const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([
-    {
-      id: '1',
-      customerId: '1',
-      customerName: 'Иван Иванов',
-      type: 'purchase',
-      amount: 850000,
-      saleId: 'sale-001',
-      receiptNumber: 'R-001',
-      description: 'Покупка LDSP Черный 10 шт',
-      processedBy: 'Алишер Каримов',
-      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: '2',
-      customerId: '1',
-      customerName: 'Иван Иванов',
-      type: 'payment',
-      amount: 400000,
-      description: 'Частичная оплата',
-      processedBy: 'Алишер Каримов',
-      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    {
-      id: '3',
-      customerId: '2',
-      customerName: 'Мария Петрова',
-      type: 'purchase',
-      amount: 1200000,
-      saleId: 'sale-002',
-      receiptNumber: 'R-002',
-      description: 'Покупка MDF Серый 16 шт',
-      processedBy: 'Алишер Каримов',
-      createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-  ]);
-
-  // Map API customer to app Customer type
-  const mapApiCustomerToCustomer = (apiCustomer: ApiCustomer): Customer => {
-    return {
-      id: apiCustomer.id.toString(),
-      name: apiCustomer.full_name,
-      phone: apiCustomer.phone_number,
-      address: apiCustomer.location,
-      email: apiCustomer.about,
-      notes: apiCustomer.description,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  };
-
-  // Map app Customer to API customer data
-  const mapCustomerToApiData = (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): CreateCustomerData => {
-    return {
-      full_name: customerData.name,
-      phone_number: customerData.phone,
-      location: customerData.address || '',
-      about: customerData.email || '',
-      description: customerData.notes || '',
-    };
-  };
+  // ============== Mapping Functions ==============
 
   // Map API user to app User type
   const mapApiUserToUser = (apiUser: ApiUser): User => {
@@ -390,7 +208,258 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
-  // Fetch customers from API
+  // Map API customer to app Customer type
+  const mapApiCustomerToCustomer = (apiCustomer: ApiCustomer): Customer => {
+    return {
+      id: apiCustomer.id.toString(),
+      name: apiCustomer.full_name,
+      phone: apiCustomer.phone_number,
+      address: apiCustomer.location,
+      email: apiCustomer.about,
+      notes: apiCustomer.description,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  // Map app Customer to API customer data
+  const mapCustomerToApiData = (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): CreateCustomerData => {
+    return {
+      full_name: customerData.name,
+      phone_number: customerData.phone,
+      location: customerData.address || '',
+      about: customerData.email || '',
+      description: customerData.notes || '',
+    };
+  };
+
+  // Map API product to app Product type
+  const mapApiProductToProduct = (apiProduct: ApiProduct): Product => {
+    const parseNumber = (value: string): number => {
+      const num = parseFloat(value);
+      return isNaN(num) ? 0 : num;
+    };
+
+    const category = categories.find(c => c.id === apiProduct.category);
+    const categoryName = category?.name || 'OTHER';
+
+    return {
+      id: apiProduct.id.toString(),
+      name: apiProduct.name || '',
+      category: categoryName,
+      color: apiProduct.color || '#CCCCCC',
+      width: parseNumber(apiProduct.width),
+      height: parseNumber(apiProduct.height),
+      thickness: parseNumber(apiProduct.thick),
+      quality: apiProduct.quality || 'standard',
+      purchasePrice: parseNumber(apiProduct.arrival_price),
+      unitPrice: parseNumber(apiProduct.sale_price),
+      stockQuantity: apiProduct.count || 0,
+      enabled: true,
+      arrival_date: apiProduct.arrival_date,
+      description: apiProduct.description || '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  // Map app Product to API product data
+  const mapProductToApiData = (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): CreateProductData => {
+    const category = categories.find(c => c.name === productData.category);
+    const categoryId = category?.id || 5;
+
+    const mapQuality = (quality: string): 'standard' | 'economic' | 'premium' => {
+      switch (quality?.toLowerCase()) {
+        case 'premium':
+        case 'премиум':
+          return 'premium';
+        case 'economic':
+        case 'экономик':
+        case 'эконом':
+          return 'economic';
+        case 'standard':
+        case 'стандарт':
+        default:
+          return 'standard';
+      }
+    };
+
+    return {
+      name: productData.name,
+      color: productData.color || '#CCCCCC',
+      quality: mapQuality(productData.quality),
+      width: productData.width?.toString() || '0',
+      height: productData.height?.toString() || '0',
+      thick: productData.thickness?.toString() || '0',
+      arrival_date: productData.arrival_date || new Date().toISOString().split('T')[0],
+      description: productData.description || '',
+      category: categoryId,
+    };
+  };
+
+  // Map current user from /user/me/
+  const mapCurrentUser = (apiUser: any): User => {
+    const mapApiRole = (role: string): UserRole => {
+      switch (role?.toLowerCase()) {
+        case 's':
+          return 'salesperson';
+        case 'a':
+          return 'admin';
+        case 'm':
+          return 'manager';
+        default:
+          return 'salesperson';
+      }
+    };
+
+    return {
+      id: apiUser.id?.toString() || Date.now().toString(),
+      username: apiUser.username || '',
+      password: '',
+      role: mapApiRole(apiUser.role),
+      full_name: apiUser.full_name || apiUser.username || '',
+      phone_number: apiUser.phone_number || '',
+      createdAt: new Date().toISOString(),
+    };
+  };
+
+  // ============== Category API Functions ==============
+
+  const fetchCategories = async (search?: string) => {
+    if (!user) return;
+    
+    setIsFetchingCategories(true);
+    try {
+      const apiCategories = await categoryApi.getAll(search);
+      setCategories(apiCategories);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+      toast.error(language === 'uz' 
+        ? 'Kategoriyalarni yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке категорий');
+    } finally {
+      setIsFetchingCategories(false);
+    }
+  };
+
+  // ============== Product API Functions ==============
+
+  const fetchProducts = async (filters?: ProductFilters) => {
+    if (!user) return;
+    
+    setIsFetchingProducts(true);
+    try {
+      const apiProducts = await productApi.getAll(filters);
+      const mappedProducts = apiProducts.map(mapApiProductToProduct);
+      setProducts(mappedProducts);
+    } catch (error) {
+      console.error('Failed to fetch products:', error);
+      toast.error(language === 'uz' 
+        ? 'Mahsulotlarni yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке продуктов');
+    } finally {
+      setIsFetchingProducts(false);
+    }
+  };
+
+  const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    setIsAddingProduct(true);
+    try {
+      const apiData = mapProductToApiData(productData);
+      const newApiProduct = await productApi.create(apiData);
+      const newProduct = mapApiProductToProduct(newApiProduct);
+      
+      setProducts(prev => [...prev, newProduct]);
+      toast.success(language === 'uz' ? 'Mahsulot qo\'shildi' : 'Продукт добавлен');
+    } catch (error) {
+      console.error('Failed to add product:', error);
+      toast.error(language === 'uz' 
+        ? 'Mahsulot qo\'shishda xatolik yuz berdi' 
+        : 'Ошибка при добавлении продукта');
+      throw error;
+    } finally {
+      setIsAddingProduct(false);
+    }
+  };
+
+  const updateProduct = async (id: string, productData: Partial<Omit<Product, 'id' | 'createdAt' | 'updatedAt'>>) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    setIsUpdatingProduct(true);
+    try {
+      const apiData: Partial<CreateProductData> = {};
+      if (productData.name) apiData.name = productData.name;
+      if (productData.color) apiData.color = productData.color;
+      if (productData.quality) {
+        switch (productData.quality?.toLowerCase()) {
+          case 'premium':
+            apiData.quality = 'premium';
+            break;
+          case 'economic':
+            apiData.quality = 'economic';
+            break;
+          default:
+            apiData.quality = 'standard';
+        }
+      }
+      if (productData.width) apiData.width = productData.width.toString();
+      if (productData.height) apiData.height = productData.height.toString();
+      if (productData.thickness) apiData.thick = productData.thickness.toString();
+      if (productData.arrival_date) apiData.arrival_date = productData.arrival_date;
+      if (productData.description) apiData.description = productData.description;
+      if (productData.category) {
+        const category = categories.find(c => c.name === productData.category);
+        apiData.category = category?.id || 5;
+      }
+
+      const updatedApiProduct = await productApi.update(parseInt(id), apiData);
+      const updatedProduct = mapApiProductToProduct(updatedApiProduct);
+      
+      setProducts(prev => prev.map(p => p.id === id ? updatedProduct : p));
+      toast.success(language === 'uz' ? 'Mahsulot yangilandi' : 'Продукт обновлен');
+    } catch (error) {
+      console.error('Failed to update product:', error);
+      toast.error(language === 'uz' 
+        ? 'Mahsulot yangilashda xatolik yuz berdi' 
+        : 'Ошибка при обновлении продукта');
+      throw error;
+    } finally {
+      setIsUpdatingProduct(false);
+    }
+  };
+
+  const deleteProduct = async (id: string) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    setIsDeletingProduct(true);
+    try {
+      await productApi.delete(parseInt(id));
+      setProducts(prev => prev.filter(p => p.id !== id));
+      toast.success(language === 'uz' ? 'Mahsulot o\'chirildi' : 'Продукт удален');
+    } catch (error) {
+      console.error('Failed to delete product:', error);
+      toast.error(language === 'uz' 
+        ? 'Mahsulot o\'chirishda xatolik yuz berdi' 
+        : 'Ошибка при удалении продукта');
+      throw error;
+    } finally {
+      setIsDeletingProduct(false);
+    }
+  };
+
+  // ============== Customer API Functions ==============
+
   const fetchCustomers = async (search?: string) => {
     if (!user) return;
     
@@ -409,7 +478,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Add customer via API
   const addCustomer = async (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!user) {
       toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
@@ -435,7 +503,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Update customer via API
   const updateCustomer = async (id: string, customerData: Partial<Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>>) => {
     if (!user) {
       toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
@@ -467,7 +534,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Delete customer via API
   const deleteCustomer = async (id: string) => {
     if (!user) {
       toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
@@ -490,7 +556,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Fetch users from API
+  // ============== User API Functions ==============
+
   const fetchUsers = async () => {
     if (!user) return;
     
@@ -509,7 +576,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Add user via API
   const addUser = async (userData: Omit<User, 'id' | 'createdAt'>) => {
     if (!user) {
       toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
@@ -535,7 +601,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Update user via API
   const updateUser = async (id: string, userData: Partial<Omit<User, 'id' | 'createdAt'>>) => {
     if (!user) {
       toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
@@ -568,7 +633,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       
       setUsers(prev => prev.map(u => u.id === id ? updatedUser : u));
       
-      // If updating current user, update the user state
       if (user.id === id) {
         setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -586,14 +650,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Delete user via API
   const deleteUser = async (id: string) => {
     if (!user) {
       toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
       return;
     }
 
-    // Don't allow deleting yourself
     if (user.id === id) {
       toast.error(language === 'uz' 
         ? 'O\'zingizni o\'chira olmaysiz' 
@@ -617,68 +679,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Map API user from /user/me/ endpoint
-  const mapCurrentUser = (apiUser: any): User => {
-    console.log('Mapping API user from /user/me/:', apiUser);
-    
-    const mapApiRole = (role: string): UserRole => {
-      switch (role?.toLowerCase()) {
-        case 's':
-          return 'salesperson';
-        case 'a':
-          return 'admin';
-        case 'm':
-          return 'manager';
-        default:
-          console.warn('Unknown role:', role, 'defaulting to salesperson');
-          return 'salesperson';
-      }
-    };
+  // ============== Cart Functions ==============
 
-    return {
-      id: apiUser.id?.toString() || Date.now().toString(),
-      username: apiUser.username || '',
-      password: '',
-      role: mapApiRole(apiUser.role),
-      full_name: apiUser.full_name || apiUser.username || '',
-      phone_number: apiUser.phone_number || '',
-      createdAt: new Date().toISOString(),
-    };
-  };
-
-  // Fetch customers when user is authenticated
-  useEffect(() => {
-    if (user) {
-      fetchCustomers();
-      fetchUsers();
-    }
-  }, [user]);
-
-  // Set theme class on body
-  useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-
-  // Save language preference
-  useEffect(() => {
-    localStorage.setItem('language', language);
-  }, [language]);
-
-  // Save user to localStorage when it changes
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('user');
-    }
-  }, [user]);
-
-  // Cart functions
   const addToCart = (item: CartItem) => {
     setCart(prevCart => {
       const existingItem = prevCart.find(cartItem => cartItem.product.id === item.product.id);
@@ -733,7 +735,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
-  // Product arrival functions
+  // ============== Product Arrival Functions ==============
+
   const addProductArrival = (arrival: Omit<ProductArrival, 'id' | 'createdAt'>) => {
     const newArrival: ProductArrival = {
       ...arrival,
@@ -768,7 +771,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setProductArrivals(prev => prev.filter(arrival => arrival.id !== id));
   };
 
-  // Customer transaction functions
+  // ============== Customer Transaction Functions ==============
+
   const addCustomerTransaction = (transaction: Omit<CustomerTransaction, 'id' | 'createdAt'>) => {
     const newTransaction: CustomerTransaction = {
       ...transaction,
@@ -795,7 +799,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCustomerTransactions(prev => prev.filter(transaction => transaction.id !== id));
   };
 
-  // Calculate customer balance
   const getCustomerBalance = (customerId: string) => {
     const transactions = customerTransactions.filter(t => t.customerId === customerId);
     
@@ -815,6 +818,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       balance,
     };
   };
+
+  // ============== Auth Functions ==============
 
   const login = async (username: string, password: string): Promise<boolean> => {
     setIsLoading(true);
@@ -888,6 +893,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setUser(null);
       setUsers([]);
       setCustomers([]);
+      setProducts([]);
+      setCategories([]);
       
       console.log('6. Redirecting to login');
       window.location.href = '/login';
@@ -898,19 +905,54 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
+  // ============== Effects ==============
+
+  // Fetch initial data when user is authenticated
+  useEffect(() => {
+    if (user) {
+      fetchCategories();
+    }
+  }, [user]);
+
+  // Fetch products after categories are loaded
+  useEffect(() => {
+    if (user && categories.length > 0) {
+      fetchProducts();
+      fetchCustomers();
+      fetchUsers();
+    }
+  }, [user, categories]);
+
+  // Set theme class on body
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  // Save language preference
+  useEffect(() => {
+    localStorage.setItem('language', language);
+  }, [language]);
+
+  // Save user to localStorage
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('user');
+    }
+  }, [user]);
+
   const value: AppContextType = {
+    // State
     user,
     users,
     isAuthenticated: !!user,
     isLoading,
-    isFetchingCustomers,
-    isAddingCustomer,
-    isUpdatingCustomer,
-    isDeletingCustomer,
-    isFetchingUsers,
-    isAddingUser,
-    isUpdatingUser,
-    isDeletingUser,
     language,
     theme,
     products,
@@ -919,26 +961,63 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     sales,
     productArrivals,
     customerTransactions,
+    categories,
+    
+    // Loading states
+    isFetchingCustomers,
+    isAddingCustomer,
+    isUpdatingCustomer,
+    isDeletingCustomer,
+    isFetchingUsers,
+    isAddingUser,
+    isUpdatingUser,
+    isDeletingUser,
+    isFetchingProducts,
+    isAddingProduct,
+    isUpdatingProduct,
+    isDeletingProduct,
+    isFetchingCategories,
+    
+    // Auth functions
     login,
     logout,
     setLanguage,
     toggleTheme,
+    
+    // Cart functions
     addToCart,
     removeFromCart,
     updateCartItem,
     clearCart,
     addSale,
+    
+    // User API functions
     fetchUsers,
     addUser,
     updateUser,
     deleteUser,
+    
+    // Product API functions
+    fetchProducts,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    
+    // Category API functions
+    fetchCategories,
+    
+    // Product Arrival functions
     addProductArrival,
     updateProductArrival,
     deleteProductArrival,
+    
+    // Customer Transaction functions
     addCustomerTransaction,
     updateCustomerTransaction,
     deleteCustomerTransaction,
     getCustomerBalance,
+    
+    // Customer API functions
     fetchCustomers,
     addCustomer,
     updateCustomer,

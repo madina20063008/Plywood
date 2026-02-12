@@ -1,4 +1,15 @@
-import { ApiCustomer, CreateCustomerData, LoginCredentials, ApiUser, CreateUserData } from "./types";
+import { 
+  ApiCustomer, 
+  CreateCustomerData, 
+  LoginCredentials, 
+  ApiUser, 
+  CreateUserData, 
+  ApiProduct, 
+  CreateProductData, 
+  ProductFilters,
+  ApiCategory, 
+  UpdateProductData
+} from "./types";
 
 // api.ts
 const API_BASE_URL = 'https://plywood.pythonanywhere.com';
@@ -124,6 +135,7 @@ export const userApi = {
   },
 };
 
+// Customer API
 export const customerApi = {
   // Get all customers with optional search
   getAll: (search?: string): Promise<ApiCustomer[]> => {
@@ -152,6 +164,88 @@ export const customerApi = {
   // Delete customer
   delete: (id: number): Promise<void> => {
     return apiRequest<void>(`/customer/customer/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// Category API
+export const categoryApi = {
+  // Get all categories with optional search
+  getAll: (search?: string): Promise<ApiCategory[]> => {
+    const endpoint = search 
+      ? `/category/category/?search=${encodeURIComponent(search)}`
+      : '/category/category/';
+    return apiRequest<ApiCategory[]>(endpoint);
+  },
+
+  // Get single category
+  getById: (id: number): Promise<ApiCategory> => {
+    return apiRequest<ApiCategory>(`/category/category/${id}/`);
+  },
+
+  // Create new category
+  create: (data: { name: string }): Promise<ApiCategory> => {
+    return apiRequest<ApiCategory>('/category/category/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update category
+  update: (id: number, data: { name: string }): Promise<ApiCategory> => {
+    return apiRequest<ApiCategory>(`/category/category/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete category
+  delete: (id: number): Promise<void> => {
+    return apiRequest<void>(`/category/category/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// Product API
+export const productApi = {
+  // Get all products with filters
+  getAll: (filters?: ProductFilters): Promise<ApiProduct[]> => {
+    let endpoint = '/product/products/';
+    
+    const params = new URLSearchParams();
+    if (filters?.category) params.append('category', filters.category.toString());
+    if (filters?.quality) params.append('quality', filters.quality);
+    if (filters?.search) params.append('search', filters.search);
+    
+    const queryString = params.toString();
+    if (queryString) {
+      endpoint += `?${queryString}`;
+    }
+    
+    return apiRequest<ApiProduct[]>(endpoint);
+  },
+
+  // Create new product
+  create: (data: CreateProductData): Promise<ApiProduct> => {
+    return apiRequest<ApiProduct>('/product/products/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update product
+  update: (id: number, data: UpdateProductData): Promise<ApiProduct> => {
+    return apiRequest<ApiProduct>(`/product/products/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete product
+  delete: (id: number): Promise<void> => {
+    return apiRequest<void>(`/product/products/${id}/`, {
       method: 'DELETE',
     });
   },

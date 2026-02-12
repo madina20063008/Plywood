@@ -71,7 +71,8 @@ export interface Product {
   stockQuantity: number;
   enabled: boolean;
   imageUrl?: string;
-  arrivalDate?: string; // Date of last arrival
+  arrival_date: string;
+  description: string;
   notes?: string; // Additional notes
   createdAt: string;
   updatedAt: string;
@@ -221,3 +222,49 @@ export interface CreateUserData {
 }
 
 export type UpdateUserData = Partial<CreateUserData>;
+
+// Add these to your existing types.ts file
+// Add these to your existing types.ts file
+
+// Category API types
+export interface ApiCategory {
+  id: number;
+  name: string;
+}
+
+// Product API types
+export interface ApiProduct {
+  id: number;
+  name: string;
+  color: string;
+  quality: 'standard' | 'economic' | 'premium'; // Fixed quality values
+  width: string;
+  height: string;
+  thick: string;
+  arrival_price: string;
+  sale_price: string;
+  count: number;
+  arrival_date: string;
+  description: string;
+  category: number;
+}
+
+export interface CreateProductData {
+  name: string;
+  color: string;
+  quality: 'standard' | 'economic' | 'premium'; // Fixed quality values
+  width: string;
+  height: string;
+  thick: string;
+  arrival_date: string;
+  description: string;
+  category: number;
+}
+
+export type UpdateProductData = Partial<CreateProductData>;
+
+export interface ProductFilters {
+  category?: number;
+  quality?: string;
+  search?: string;
+}
