@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
@@ -8,22 +8,39 @@ import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { ArrowLeft, PackagePlus, Package, Calendar, History } from 'lucide-react';
+import { ArrowLeft, PackagePlus, Package, Calendar, History, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
 export const ProductReceivingPage: React.FC = () => {
-  const { products, updateProduct, productArrivals, addProductArrival, currentUser, language } = useApp();
+  const { 
+    products, 
+    updateProduct, 
+    productArrivals, 
+    addProductArrival, 
+    fetchAcceptanceHistory,
+    user, 
+    language,
+    isAddingProduct 
+  } = useApp();
+  
   const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [formData, setFormData] = useState({
     purchasePrice: 0,
     sellingPrice: 0,
     quantity: 0,
-    arrivalDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+    arrivalDate: new Date().toISOString().split('T')[0],
     notes: '',
   });
+
+  // Fetch acceptance history on component mount
+  useEffect(() => {
+    fetchAcceptanceHistory();
+  }, []);
 
   const t = (key: string) => getTranslation(language, key as any);
 
@@ -40,7 +57,16 @@ export const ProductReceivingPage: React.FC = () => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchAcceptanceHistory();
+    setIsRefreshing(false);
+    toast.success(language === 'uz' 
+      ? 'Tarix yangilandi' 
+      : 'История обновлена');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!selectedProductId || !selectedProduct) {
@@ -67,41 +93,42 @@ export const ProductReceivingPage: React.FC = () => {
       return;
     }
 
-    // Add to product arrival history
-    addProductArrival({
-      productId: selectedProductId,
-      productName: selectedProduct.name,
-      category: selectedProduct.category,
-      quantity: formData.quantity,
-      purchasePrice: formData.purchasePrice,
-      sellingPrice: formData.sellingPrice,
-      totalInvestment: formData.purchasePrice * formData.quantity,
-      arrivalDate: formData.arrivalDate,
-      notes: formData.notes,
-      receivedBy: currentUser?.name || 'Unknown',
-    });
+    setIsSubmitting(true);
+    try {
+      // Add to product arrival history via API
+      await addProductArrival({
+        productId: selectedProductId,
+        productName: selectedProduct.name,
+        category: selectedProduct.category,
+        quantity: formData.quantity,
+        purchasePrice: formData.purchasePrice,
+        sellingPrice: formData.sellingPrice,
+        totalInvestment: formData.purchasePrice * formData.quantity,
+        arrivalDate: formData.arrivalDate,
+        notes: formData.notes,
+        receivedBy: user?.full_name || 'Unknown',
+      });
 
-    // Update product with new stock and prices
-    updateProduct(selectedProductId, {
-      stockQuantity: selectedProduct.stockQuantity + formData.quantity,
-      purchasePrice: formData.purchasePrice,
-      unitPrice: formData.sellingPrice,
-      arrivalDate: formData.arrivalDate,
-    });
+      // Update product with new stock and prices
+      await updateProduct(selectedProductId, {
+        stockQuantity: selectedProduct.stockQuantity + formData.quantity,
+        purchasePrice: formData.purchasePrice,
+        unitPrice: formData.sellingPrice,
+        arrival_date: formData.arrivalDate,
+      });
 
-    toast.success(language === 'uz' 
-      ? `${formData.quantity} dona mahsulot qabul qilindi` 
-      : `Принято ${formData.quantity} единиц товара`
-    );
-    
-    resetForm();
+      resetForm();
+    } catch (error) {
+      console.error('Error submitting acceptance:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleProductSelect = (productId: string) => {
     setSelectedProductId(productId);
     const product = products.find(p => p.id === productId);
     
-    // Pre-fill with existing prices if available
     if (product) {
       setFormData({
         purchasePrice: product.purchasePrice || 0,
@@ -120,25 +147,36 @@ export const ProductReceivingPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate('/inventory')}
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          {language === 'uz' ? 'Orqaga' : 'Назад'}
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-            {language === 'uz' ? 'Mahsulot qabul qilish' : 'Приём товара'}
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
-            {language === 'uz' 
-              ? 'Kelgan mahsulotning narxi va miqdorini kiriting' 
-              : 'Введите цену и количество поступившего товара'}
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/inventory')}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            {language === 'uz' ? 'Orqaga' : 'Назад'}
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+              {language === 'uz' ? 'Mahsulot qabul qilish' : 'Приём товара'}
+            </h1>
+            <p className="text-gray-500 dark:text-gray-400 mt-1">
+              {language === 'uz' 
+                ? 'Kelgan mahsulotning narxi va miqdorini kiriting' 
+                : 'Введите цену и количество поступившего товара'}
+            </p>
+          </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+          {language === 'uz' ? 'Yangilash' : 'Обновить'}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -188,22 +226,6 @@ export const ProductReceivingPage: React.FC = () => {
                     )}
                   </SelectContent>
                 </Select>
-                {products.length === 0 && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {language === 'uz' 
-                      ? 'Avval mahsulot yarating' 
-                      : 'Сначала создайте продукт'}
-                    {' '}
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="h-auto p-0 text-xs"
-                      onClick={() => navigate('/product-creation')}
-                    >
-                      {language === 'uz' ? 'Mahsulot yaratish' : 'Создать продукт'}
-                    </Button>
-                  </p>
-                )}
               </div>
 
               {/* Arrival Date */}
@@ -220,7 +242,7 @@ export const ProductReceivingPage: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, arrivalDate: e.target.value })}
                     className="pl-10"
                     required
-                    disabled={!selectedProductId}
+                    disabled={!selectedProductId || isSubmitting}
                   />
                 </div>
               </div>
@@ -240,13 +262,8 @@ export const ProductReceivingPage: React.FC = () => {
                     required
                     min="0"
                     step="0.01"
-                    disabled={!selectedProductId}
+                    disabled={!selectedProductId || isSubmitting}
                   />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {language === 'uz' 
-                      ? 'Mahsulotning sotib olingan narxi' 
-                      : 'Цена, по которой товар был закуплен'}
-                  </p>
                 </div>
 
                 {/* Selling Price */}
@@ -263,13 +280,8 @@ export const ProductReceivingPage: React.FC = () => {
                     required
                     min="0"
                     step="0.01"
-                    disabled={!selectedProductId}
+                    disabled={!selectedProductId || isSubmitting}
                   />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {language === 'uz' 
-                      ? 'Mahsulotning sotilish narxi' 
-                      : 'Цена, по которой товар будет продаваться'}
-                  </p>
                 </div>
               </div>
 
@@ -286,13 +298,8 @@ export const ProductReceivingPage: React.FC = () => {
                   placeholder="0"
                   required
                   min="1"
-                  disabled={!selectedProductId}
+                  disabled={!selectedProductId || isSubmitting}
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {language === 'uz' 
-                    ? 'Qabul qilinayotgan mahsulot soni' 
-                    : 'Количество принимаемого товара'}
-                </p>
               </div>
 
               {/* Notes */}
@@ -305,7 +312,7 @@ export const ProductReceivingPage: React.FC = () => {
                   value={formData.notes}
                   onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                   placeholder={language === 'uz' ? 'Qo\'shimcha ma\'lumot...' : 'Дополнительная информация...'}
-                  disabled={!selectedProductId}
+                  disabled={!selectedProductId || isSubmitting}
                 />
               </div>
 
@@ -347,19 +354,32 @@ export const ProductReceivingPage: React.FC = () => {
                   type="button" 
                   variant="outline" 
                   onClick={resetForm}
+                  disabled={isSubmitting}
                 >
                   {language === 'uz' ? 'Tozalash' : 'Очистить'}
                 </Button>
-                <Button type="submit" disabled={!selectedProductId}>
-                  <PackagePlus className="mr-2 h-4 w-4" />
-                  {language === 'uz' ? 'Qabul qilish' : 'Принять товар'}
+                <Button 
+                  type="submit" 
+                  disabled={!selectedProductId || isSubmitting || isAddingProduct}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      {language === 'uz' ? 'Qabul qilinmoqda...' : 'Прием...'}
+                    </>
+                  ) : (
+                    <>
+                      <PackagePlus className="mr-2 h-4 w-4" />
+                      {language === 'uz' ? 'Qabul qilish' : 'Принять товар'}
+                    </>
+                  )}
                 </Button>
               </div>
             </form>
           </CardContent>
         </Card>
 
-        {/* Product Preview */}
+        {/* Product Preview - Same as before */}
         <Card>
           <CardHeader>
             <CardTitle>

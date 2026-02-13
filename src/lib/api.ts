@@ -8,7 +8,10 @@ import {
   CreateProductData, 
   ProductFilters,
   ApiCategory, 
-  UpdateProductData
+  UpdateProductData,
+  CreateAcceptanceData,
+  ApiAcceptance,
+  ApiAcceptanceHistory
 } from "./types";
 
 // api.ts
@@ -248,5 +251,23 @@ export const productApi = {
     return apiRequest<void>(`/product/products/${id}/`, {
       method: 'DELETE',
     });
+  },
+};
+
+// Add this to your api.ts file
+
+// Acceptance (Product Receiving) API
+export const acceptanceApi = {
+  // Create new acceptance
+  create: (data: CreateAcceptanceData): Promise<ApiAcceptance> => {
+    return apiRequest<ApiAcceptance>('/acceptance/acceptances/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Get acceptance history
+  getHistory: (): Promise<ApiAcceptanceHistory[]> => {
+    return apiRequest<ApiAcceptanceHistory[]>('/acceptance/history/');
   },
 };

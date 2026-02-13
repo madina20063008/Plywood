@@ -4,7 +4,8 @@ import {
   customerApi, 
   userApi, 
   productApi, 
-  categoryApi 
+  categoryApi,
+  acceptanceApi,
 } from '../lib/api';
 import { 
   User, 
@@ -22,7 +23,9 @@ import {
   ApiProduct,
   CreateProductData,
   ProductFilters,
-  ApiCategory
+  ApiCategory,
+  ApiAcceptanceHistory,
+  CreateAcceptanceData
 } from '../lib/types';
 import { toast } from 'sonner';
 
@@ -40,6 +43,7 @@ interface AppContextType {
   productArrivals: ProductArrival[];
   customerTransactions: CustomerTransaction[];
   categories: ApiCategory[];
+  acceptanceHistory: ApiAcceptanceHistory[];
   
   // Auth functions
   login: (username: string, password: string) => Promise<boolean>;
@@ -69,8 +73,11 @@ interface AppContextType {
   // Category API functions
   fetchCategories: (search?: string) => Promise<void>;
   
-  // Product Arrival functions
-  addProductArrival: (arrival: Omit<ProductArrival, 'id' | 'createdAt'>) => void;
+  // Acceptance API functions
+  fetchAcceptanceHistory: () => Promise<void>;
+  addProductArrival: (arrival: Omit<ProductArrival, 'id' | 'createdAt' | 'apiId' | 'acceptanceId'>) => Promise<void>;
+  
+  // Product Arrival functions (legacy)
   updateProductArrival: (id: string, arrival: Partial<ProductArrival>) => void;
   deleteProductArrival: (id: string) => void;
   
@@ -104,6 +111,7 @@ interface AppContextType {
   isUpdatingProduct: boolean;
   isDeletingProduct: boolean;
   isFetchingCategories: boolean;
+  isFetchingAcceptanceHistory: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -137,6 +145,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Separate loading states for category operations
   const [isFetchingCategories, setIsFetchingCategories] = useState(false);
   
+  // Separate loading state for acceptance history
+  const [isFetchingAcceptanceHistory, setIsFetchingAcceptanceHistory] = useState(false);
+  
   const [language, setLanguage] = useState<'uz' | 'ru'>(() => {
     return (localStorage.getItem('language') as 'uz' | 'ru') || 'uz';
   });
@@ -154,6 +165,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [sales, setSales] = useState<Sale[]>([]);
   const [productArrivals, setProductArrivals] = useState<ProductArrival[]>([]);
   const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([]);
+  const [acceptanceHistory, setAcceptanceHistory] = useState<ApiAcceptanceHistory[]>([]);
 
   // ============== Mapping Functions ==============
 
@@ -321,6 +333,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       phone_number: apiUser.phone_number || '',
       createdAt: new Date().toISOString(),
     };
+  };
+
+  // ============== Helper Functions ==============
+
+  const getCategoryNameFromProductId = (productId: string): string => {
+    const product = products.find(p => p.id === productId);
+    return product?.category || 'OTHER';
   };
 
   // ============== Category API Functions ==============
@@ -679,6 +698,130 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // ============== Acceptance API Functions ==============
+
+  const fetchAcceptanceHistory = async () => {
+    if (!user) return;
+    
+    setIsFetchingAcceptanceHistory(true);
+    try {
+      const history = await acceptanceApi.getHistory();
+      setAcceptanceHistory(history);
+      
+      // Also update productArrivals state with API data
+      const mappedArrivals: ProductArrival[] = history.map(item => ({
+        id: item.id.toString(),
+        apiId: item.id,
+        acceptanceId: item.acceptance,
+        productId: item.product.toString(),
+        productName: item.product_name,
+        category: getCategoryNameFromProductId(item.product.toString()) || 'OTHER',
+        quantity: item.count,
+        purchasePrice: parseFloat(item.arrival_price),
+        sellingPrice: parseFloat(item.sale_price),
+        totalInvestment: parseFloat(item.arrival_price) * item.count,
+        arrivalDate: item.arrival_date,
+        notes: item.description || '',
+        receivedBy: user?.full_name || 'Unknown',
+        createdAt: item.created_at,
+      }));
+      
+      setProductArrivals(mappedArrivals);
+    } catch (error) {
+      console.error('Failed to fetch acceptance history:', error);
+      toast.error(language === 'uz' 
+        ? 'Qabul qilish tarixini yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке истории приема');
+    } finally {
+      setIsFetchingAcceptanceHistory(false);
+    }
+  };
+
+  const addProductArrival = async (arrival: Omit<ProductArrival, 'id' | 'createdAt' | 'apiId' | 'acceptanceId'>) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    try {
+      // Find the product to get its API ID
+      const product = products.find(p => p.id === arrival.productId);
+      if (!product) {
+        throw new Error('Product not found');
+      }
+
+      // Get the API product ID
+      const productApiId = parseInt(product.id);
+      
+      const acceptanceData: CreateAcceptanceData = {
+        product: productApiId,
+        arrival_price: arrival.purchasePrice.toString(),
+        sale_price: arrival.sellingPrice.toString(),
+        count: arrival.quantity,
+        arrival_date: arrival.arrivalDate,
+        description: arrival.notes || '',
+      };
+
+      // Create acceptance via API
+      const newAcceptance = await acceptanceApi.create(acceptanceData);
+      
+      // Create local arrival record
+      const newArrival: ProductArrival = {
+        ...arrival,
+        id: newAcceptance.id.toString(),
+        apiId: newAcceptance.id,
+        acceptanceId: newAcceptance.id,
+        productName: product.name,
+        category: product.category,
+        receivedBy: user.full_name,
+        totalInvestment: arrival.purchasePrice * arrival.quantity,
+        createdAt: new Date().toISOString(),
+      };
+      
+      setProductArrivals(prev => [newArrival, ...prev]);
+      
+      // Update product stock and prices
+      setProducts(prevProducts =>
+        prevProducts.map(p =>
+          p.id === arrival.productId
+            ? { 
+                ...p, 
+                stockQuantity: p.stockQuantity + arrival.quantity,
+                purchasePrice: arrival.purchasePrice,
+                unitPrice: arrival.sellingPrice,
+                arrival_date: arrival.arrivalDate,
+              }
+            : p
+        )
+      );
+      
+      toast.success(language === 'uz' 
+        ? `${arrival.quantity} dona mahsulot qabul qilindi` 
+        : `Принято ${arrival.quantity} единиц товара`);
+        
+    } catch (error) {
+      console.error('Failed to add product arrival:', error);
+      toast.error(language === 'uz' 
+        ? 'Mahsulot qabul qilishda xatolik yuz berdi' 
+        : 'Ошибка при приеме товара');
+      throw error;
+    }
+  };
+
+  // ============== Legacy Product Arrival Functions ==============
+
+  const updateProductArrival = (id: string, arrivalData: Partial<ProductArrival>) => {
+    setProductArrivals(prev =>
+      prev.map(arrival =>
+        arrival.id === id ? { ...arrival, ...arrivalData } : arrival
+      )
+    );
+  };
+
+  const deleteProductArrival = (id: string) => {
+    setProductArrivals(prev => prev.filter(arrival => arrival.id !== id));
+  };
+
   // ============== Cart Functions ==============
 
   const addToCart = (item: CartItem) => {
@@ -733,42 +876,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return product;
       })
     );
-  };
-
-  // ============== Product Arrival Functions ==============
-
-  const addProductArrival = (arrival: Omit<ProductArrival, 'id' | 'createdAt'>) => {
-    const newArrival: ProductArrival = {
-      ...arrival,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-    };
-    
-    setProductArrivals(prev => [newArrival, ...prev]);
-    
-    setProducts(prevProducts =>
-      prevProducts.map(product =>
-        product.id === arrival.productId
-          ? { ...product, stockQuantity: product.stockQuantity + arrival.quantity }
-          : product
-      )
-    );
-    
-    toast.success(language === 'uz' 
-      ? 'Mahsulot qabul qilindi' 
-      : 'Товар принят');
-  };
-
-  const updateProductArrival = (id: string, arrivalData: Partial<ProductArrival>) => {
-    setProductArrivals(prev =>
-      prev.map(arrival =>
-        arrival.id === id ? { ...arrival, ...arrivalData } : arrival
-      )
-    );
-  };
-
-  const deleteProductArrival = (id: string) => {
-    setProductArrivals(prev => prev.filter(arrival => arrival.id !== id));
   };
 
   // ============== Customer Transaction Functions ==============
@@ -895,6 +1002,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCustomers([]);
       setProducts([]);
       setCategories([]);
+      setProductArrivals([]);
+      setAcceptanceHistory([]);
       
       console.log('6. Redirecting to login');
       window.location.href = '/login';
@@ -911,6 +1020,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     if (user) {
       fetchCategories();
+      fetchAcceptanceHistory();
     }
   }, [user]);
 
@@ -962,6 +1072,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     productArrivals,
     customerTransactions,
     categories,
+    acceptanceHistory,
     
     // Loading states
     isFetchingCustomers,
@@ -977,6 +1088,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     isUpdatingProduct,
     isDeletingProduct,
     isFetchingCategories,
+    isFetchingAcceptanceHistory,
     
     // Auth functions
     login,
@@ -1006,8 +1118,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Category API functions
     fetchCategories,
     
-    // Product Arrival functions
+    // Acceptance API functions
+    fetchAcceptanceHistory,
     addProductArrival,
+    
+    // Legacy Product Arrival functions
     updateProductArrival,
     deleteProductArrival,
     

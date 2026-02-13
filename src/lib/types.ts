@@ -268,3 +268,57 @@ export interface ProductFilters {
   quality?: string;
   search?: string;
 }
+
+// Add these types to your existing types file
+
+// Acceptance (Product Receiving) API Types
+export interface ApiAcceptance {
+  id: number;
+  product: number;
+  arrival_price: string;
+  sale_price: string;
+  count: number;
+  arrival_date: string;
+  description: string;
+}
+
+export interface CreateAcceptanceData {
+  product: number;
+  arrival_price: string;
+  sale_price: string;
+  count: number;
+  arrival_date: string;
+  description: string;
+}
+
+export interface ApiAcceptanceHistory {
+  id: number;
+  acceptance: number;
+  product: number;
+  product_name: string;
+  arrival_price: string;
+  sale_price: string;
+  count: number;
+  arrival_date: string;
+  description: string;
+  created_at: string;
+}
+
+// Update your existing ProductArrival type to match API
+export interface ProductArrival {
+  id: string;
+  productId: string;
+  productName: string;
+  category: string;
+  quantity: number;
+  purchasePrice: number;
+  sellingPrice: number;
+  totalInvestment: number;
+  arrivalDate: string;
+  notes: string;
+  receivedBy: string;
+  createdAt: string;
+  // API fields
+  apiId?: number;
+  acceptanceId?: number;
+}
