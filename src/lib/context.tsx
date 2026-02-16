@@ -6,6 +6,11 @@ import {
   productApi, 
   categoryApi,
   acceptanceApi,
+  basketApi,
+  cuttingApi,
+  bandingApi,
+  thicknessApi,
+  orderApi,
 } from '../lib/api';
 import { 
   User, 
@@ -25,7 +30,18 @@ import {
   ProductFilters,
   ApiCategory,
   ApiAcceptanceHistory,
-  CreateAcceptanceData
+  CreateAcceptanceData,
+  ApiBasket,
+  CuttingService,
+  EdgeBandingService,
+  ApiCutting,
+  CreateCuttingData,
+  ApiBanding,
+  CreateBandingData,
+  ApiThickness,
+  CreateThicknessData,
+  ApiOrder,
+  CreateOrderData
 } from '../lib/types';
 import { toast } from 'sonner';
 
@@ -44,6 +60,8 @@ interface AppContextType {
   customerTransactions: CustomerTransaction[];
   categories: ApiCategory[];
   acceptanceHistory: ApiAcceptanceHistory[];
+  thicknesses: ApiThickness[];
+  orders: ApiOrder[];
   
   // Auth functions
   login: (username: string, password: string) => Promise<boolean>;
@@ -52,11 +70,24 @@ interface AppContextType {
   toggleTheme: () => void;
   
   // Cart functions
-  addToCart: (item: CartItem) => void;
-  removeFromCart: (itemId: string) => void;
-  updateCartItem: (itemId: string, quantity: number) => void;
-  clearCart: () => void;
-  addSale: (sale: Sale) => void;
+  addToCart: (item: CartItem) => Promise<void>;
+  removeFromCart: (itemId: string) => Promise<void>;
+  updateCartItem: (itemId: string, quantity: number) => Promise<void>;
+  clearCart: () => Promise<void>;
+  fetchBasket: () => Promise<void>;
+  
+  // Service functions
+  addCuttingService: (itemId: string, cuttingService: CuttingService) => Promise<void>;
+  addEdgeBandingService: (itemId: string, edgeBandingService: EdgeBandingService) => Promise<void>;
+  
+  // Thickness API functions
+  fetchThicknesses: () => Promise<void>;
+  addThickness: (data: CreateThicknessData) => Promise<void>;
+  deleteThickness: (id: number) => Promise<void>;
+  
+  // Order API functions
+  createOrder: (orderData: CreateOrderData) => Promise<ApiOrder>;
+  fetchOrders: () => Promise<void>;
   
   // User API functions
   fetchUsers: () => Promise<void>;
@@ -76,10 +107,6 @@ interface AppContextType {
   // Acceptance API functions
   fetchAcceptanceHistory: () => Promise<void>;
   addProductArrival: (arrival: Omit<ProductArrival, 'id' | 'createdAt' | 'apiId' | 'acceptanceId'>) => Promise<void>;
-  
-  // Product Arrival functions (legacy)
-  updateProductArrival: (id: string, arrival: Partial<ProductArrival>) => void;
-  deleteProductArrival: (id: string) => void;
   
   // Customer Transaction functions
   addCustomerTransaction: (transaction: Omit<CustomerTransaction, 'id' | 'createdAt'>) => void;
@@ -112,6 +139,10 @@ interface AppContextType {
   isDeletingProduct: boolean;
   isFetchingCategories: boolean;
   isFetchingAcceptanceHistory: boolean;
+  isFetchingBasket: boolean;
+  isFetchingThicknesses: boolean;
+  isCreatingOrder: boolean;
+  isFetchingOrders: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -148,6 +179,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Separate loading state for acceptance history
   const [isFetchingAcceptanceHistory, setIsFetchingAcceptanceHistory] = useState(false);
   
+  // Separate loading state for basket
+  const [isFetchingBasket, setIsFetchingBasket] = useState(false);
+  
+  // Separate loading state for thicknesses
+  const [isFetchingThicknesses, setIsFetchingThicknesses] = useState(false);
+  
+  // Separate loading states for orders
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [isFetchingOrders, setIsFetchingOrders] = useState(false);
+  
   const [language, setLanguage] = useState<'uz' | 'ru'>(() => {
     return (localStorage.getItem('language') as 'uz' | 'ru') || 'uz';
   });
@@ -166,6 +207,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [productArrivals, setProductArrivals] = useState<ProductArrival[]>([]);
   const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([]);
   const [acceptanceHistory, setAcceptanceHistory] = useState<ApiAcceptanceHistory[]>([]);
+  const [thicknesses, setThicknesses] = useState<ApiThickness[]>([]);
+  const [orders, setOrders] = useState<ApiOrder[]>([]);
 
   // ============== Mapping Functions ==============
 
@@ -256,7 +299,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const categoryName = category?.name || 'OTHER';
 
     return {
-      id: apiProduct.id.toString(),
+      id: apiProduct.id,
       name: apiProduct.name || '',
       category: categoryName,
       color: apiProduct.color || '#CCCCCC',
@@ -335,10 +378,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
+  // Map API basket item to CartItem
+  const mapApiBasketToCart = (apiBasket: any): CartItem[] => {
+    if (!apiBasket || !apiBasket.items || !Array.isArray(apiBasket.items)) {
+      return [];
+    }
+    
+    return apiBasket.items.map((item: any) => {
+      // Safely access product data
+      if (!item || !item.product || !Array.isArray(item.product) || item.product.length === 0) {
+        return null;
+      }
+      
+      const productData = item.product[0];
+      if (!productData) {
+        return null;
+      }
+      
+      try {
+        const product = mapApiProductToProduct(productData);
+        
+        return {
+          id: item.id?.toString() || Date.now().toString(),
+          product,
+          quantity: 1, // Default to 1 since API doesn't store quantity
+          basketItemId: item.id, // Store API ID for removal
+        };
+      } catch (error) {
+        console.error('Error mapping product:', error, productData);
+        return null;
+      }
+    }).filter(Boolean); // Remove any null items
+  };
+
   // ============== Helper Functions ==============
 
   const getCategoryNameFromProductId = (productId: string): string => {
-    const product = products.find(p => p.id === productId);
+    const product = products.find(p => p.id.toString() === productId);
     return product?.category || 'OTHER';
   };
 
@@ -358,6 +434,109 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         : 'Ошибка при загрузке категорий');
     } finally {
       setIsFetchingCategories(false);
+    }
+  };
+
+  // ============== Thickness API Functions ==============
+
+  const fetchThicknesses = async () => {
+    if (!user) return;
+    
+    setIsFetchingThicknesses(true);
+    try {
+      const apiThicknesses = await thicknessApi.getAll();
+      setThicknesses(apiThicknesses);
+    } catch (error) {
+      console.error('Failed to fetch thicknesses:', error);
+      toast.error(language === 'uz' 
+        ? 'Qalinliklarni yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке толщин');
+    } finally {
+      setIsFetchingThicknesses(false);
+    }
+  };
+
+  const addThickness = async (data: CreateThicknessData) => {
+    if (!user) return;
+
+    try {
+      const newThickness = await thicknessApi.create(data);
+      setThicknesses(prev => [...prev, newThickness]);
+      toast.success(language === 'uz' 
+        ? 'Qalinlik qo\'shildi' 
+        : 'Толщина добавлена');
+    } catch (error) {
+      console.error('Failed to add thickness:', error);
+      toast.error(language === 'uz' 
+        ? 'Qalinlik qo\'shishda xatolik yuz berdi' 
+        : 'Ошибка при добавлении толщины');
+      throw error;
+    }
+  };
+
+  const deleteThickness = async (id: number) => {
+    if (!user) return;
+
+    try {
+      await thicknessApi.delete(id);
+      setThicknesses(prev => prev.filter(t => t.id !== id));
+      toast.success(language === 'uz' 
+        ? 'Qalinlik o\'chirildi' 
+        : 'Толщина удалена');
+    } catch (error) {
+      console.error('Failed to delete thickness:', error);
+      toast.error(language === 'uz' 
+        ? 'Qalinlik o\'chirishda xatolik yuz berdi' 
+        : 'Ошибка при удалении толщины');
+      throw error;
+    }
+  };
+
+  // ============== Order API Functions ==============
+
+  const createOrder = async (orderData: CreateOrderData): Promise<ApiOrder> => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      throw new Error('User not authenticated');
+    }
+
+    setIsCreatingOrder(true);
+    try {
+      const newOrder = await orderApi.create(orderData);
+      setOrders(prev => [newOrder, ...prev]);
+      
+      // Clear cart after successful order
+      await clearCart();
+      
+      toast.success(language === 'uz' 
+        ? 'Buyurtma muvaffaqiyatli yaratildi' 
+        : 'Заказ успешно создан');
+      return newOrder;
+    } catch (error: any) {
+      console.error('Failed to create order:', error);
+      toast.error(language === 'uz' 
+        ? `Buyurtma yaratishda xatolik: ${error.message}` 
+        : `Ошибка при создании заказа: ${error.message}`);
+      throw error;
+    } finally {
+      setIsCreatingOrder(false);
+    }
+  };
+
+  const fetchOrders = async () => {
+    if (!user) return;
+
+    setIsFetchingOrders(true);
+    try {
+      const apiOrders = await orderApi.getAll();
+      setOrders(apiOrders);
+    } catch (error) {
+      console.error('Failed to fetch orders:', error);
+      toast.error(language === 'uz' 
+        ? 'Buyurtmalarni yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке заказов');
+    } finally {
+      setIsFetchingOrders(false);
     }
   };
 
@@ -442,7 +621,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const updatedApiProduct = await productApi.update(parseInt(id), apiData);
       const updatedProduct = mapApiProductToProduct(updatedApiProduct);
       
-      setProducts(prev => prev.map(p => p.id === id ? updatedProduct : p));
+      setProducts(prev => prev.map(p => p.id.toString() === id ? updatedProduct : p));
       toast.success(language === 'uz' ? 'Mahsulot yangilandi' : 'Продукт обновлен');
     } catch (error) {
       console.error('Failed to update product:', error);
@@ -464,7 +643,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setIsDeletingProduct(true);
     try {
       await productApi.delete(parseInt(id));
-      setProducts(prev => prev.filter(p => p.id !== id));
+      setProducts(prev => prev.filter(p => p.id.toString() !== id));
       toast.success(language === 'uz' ? 'Mahsulot o\'chirildi' : 'Продукт удален');
     } catch (error) {
       console.error('Failed to delete product:', error);
@@ -698,6 +877,227 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // ============== Basket API Functions ==============
+
+  const fetchBasket = async () => {
+    if (!user) return;
+    
+    setIsFetchingBasket(true);
+    try {
+      const apiBasket = await basketApi.getBasket();
+      console.log('API Basket response:', apiBasket);
+      
+      // Ensure we have valid data
+      if (apiBasket && apiBasket.items) {
+        const mappedCart = mapApiBasketToCart(apiBasket);
+        setCart(mappedCart);
+      } else {
+        setCart([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch basket:', error);
+      toast.error(language === 'uz' 
+        ? 'Savatchani yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке корзины');
+      setCart([]);
+    } finally {
+      setIsFetchingBasket(false);
+    }
+  };
+
+  const addToCart = async (item: CartItem) => {
+    if (!user) {
+      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+      return;
+    }
+
+    try {
+      // Add to API
+      const productId = item.product.id;
+      await basketApi.addToBasket(productId);
+      
+      // Update local state
+      setCart(prevCart => {
+        const existingItem = prevCart.find(cartItem => cartItem.product.id === item.product.id);
+        
+        if (existingItem) {
+          return prevCart;
+        } else {
+          const newItem = {
+            ...item,
+            id: Date.now().toString(),
+            basketItemId: Date.now(), // This will be replaced when we fetch basket again
+          };
+          return [...prevCart, newItem];
+        }
+      });
+      
+      // Refresh basket to get correct IDs
+      await fetchBasket();
+    } catch (error) {
+      console.error('Failed to add to basket:', error);
+      toast.error(language === 'uz' 
+        ? 'Savatchaga qo\'shishda xatolik yuz berdi' 
+        : 'Ошибка при добавлении в корзину');
+      throw error;
+    }
+  };
+
+  const removeFromCart = async (itemId: string) => {
+    if (!user) return;
+
+    try {
+      // Find the item to get its API ID
+      const item = cart.find(i => i.id === itemId);
+      if (item?.basketItemId) {
+        // Remove from API
+        await basketApi.removeFromBasket(item.basketItemId);
+      }
+      
+      // Update local state
+      setCart(prevCart => prevCart.filter(item => item.id !== itemId));
+      
+      toast.success(language === 'uz' 
+        ? 'Mahsulot savatchadan o\'chirildi' 
+        : 'Товар удален из корзины');
+    } catch (error) {
+      console.error('Failed to remove from basket:', error);
+      toast.error(language === 'uz' 
+        ? 'Savatchadan o\'chirishda xatolik yuz berdi' 
+        : 'Ошибка при удалении из корзины');
+      throw error;
+    }
+  };
+
+  const updateCartItem = async (itemId: string, quantity: number) => {
+    if (quantity <= 0) {
+      await removeFromCart(itemId);
+      return;
+    }
+    
+    try {
+      // Since API doesn't support quantity updates directly,
+      // we update only local state
+      setCart(prevCart =>
+        prevCart.map(item =>
+          item.id === itemId ? { ...item, quantity } : item
+        )
+      );
+    } catch (error) {
+      console.error('Failed to update cart item:', error);
+      toast.error(language === 'uz' 
+        ? 'Savatchani yangilashda xatolik yuz berdi' 
+        : 'Ошибка при обновлении корзины');
+      throw error;
+    }
+  };
+
+  const clearCart = async () => {
+    if (!user) return;
+
+    try {
+      // Clear API basket
+      await basketApi.clearBasket();
+      
+      // Clear local state
+      setCart([]);
+      
+      toast.success(language === 'uz' 
+        ? 'Savatcha tozalandi' 
+        : 'Корзина очищена');
+    } catch (error) {
+      console.error('Failed to clear basket:', error);
+      toast.error(language === 'uz' 
+        ? 'Savatchani tozalashda xatolik yuz berdi' 
+        : 'Ошибка при очистке корзины');
+      throw error;
+    }
+  };
+
+  // ============== Service Functions ==============
+
+  const addCuttingService = async (itemId: string, cuttingService: CuttingService) => {
+    if (!user) return;
+
+    try {
+      // Create cutting service in API
+      const cuttingData: CreateCuttingData = {
+        count: cuttingService.numberOfBoards,
+        price: cuttingService.pricePerCut.toString(),
+        total_price: cuttingService.total.toString(),
+      };
+      
+      const apiCutting = await cuttingApi.create(cuttingData);
+      
+      // Update local cart item with cutting service
+      setCart(prevCart =>
+        prevCart.map(item =>
+          item.id === itemId 
+            ? { 
+                ...item, 
+                cuttingService: {
+                  ...cuttingService,
+                  id: apiCutting.id.toString(),
+                  apiId: apiCutting.id,
+                }
+              } 
+            : item
+        )
+      );
+      
+      toast.success(language === 'uz' 
+        ? 'Kesish xizmati qo\'shildi' 
+        : 'Услуга распила добавлена');
+    } catch (error) {
+      console.error('Failed to add cutting service:', error);
+      toast.error(language === 'uz' 
+        ? 'Kesish xizmati qo\'shishda xatolik yuz berdi' 
+        : 'Ошибка при добавлении услуги распила');
+      throw error;
+    }
+  };
+
+  const addEdgeBandingService = async (itemId: string, edgeBandingService: EdgeBandingService) => {
+    if (!user) return;
+
+    try {
+      // Create banding service in API
+      const bandingData: CreateBandingData = {
+        thickness: edgeBandingService.thicknessId || 0,
+        width: edgeBandingService.width.toString(),
+        height: edgeBandingService.height.toString(),
+      };
+      
+      const apiBanding = await bandingApi.create(bandingData);
+      
+      // Update local cart item with edge banding service
+      setCart(prevCart =>
+        prevCart.map(item =>
+          item.id === itemId 
+            ? { 
+                ...item, 
+                edgeBandingService: {
+                  ...edgeBandingService,
+                  id: apiBanding.id.toString(),
+                  apiId: apiBanding.id,
+                }
+              } 
+            : item
+        )
+      );
+      
+      toast.success(language === 'uz' 
+        ? 'Kromkalash xizmati qo\'shildi' 
+        : 'Услуга кромкования добавлена');
+    } catch (error) {
+      console.error('Failed to add edge banding service:', error);
+      toast.error(language === 'uz' 
+        ? 'Kromkalash xizmati qo\'shishda xatolik yuz berdi' 
+        : 'Ошибка при добавлении услуги кромкования');
+      throw error;
+    }
+  };
+
   // ============== Acceptance API Functions ==============
 
   const fetchAcceptanceHistory = async () => {
@@ -745,13 +1145,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       // Find the product to get its API ID
-      const product = products.find(p => p.id === arrival.productId);
+      const product = products.find(p => p.id.toString() === arrival.productId);
       if (!product) {
         throw new Error('Product not found');
       }
 
       // Get the API product ID
-      const productApiId = parseInt(product.id);
+      const productApiId = product.id;
       
       const acceptanceData: CreateAcceptanceData = {
         product: productApiId,
@@ -783,7 +1183,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Update product stock and prices
       setProducts(prevProducts =>
         prevProducts.map(p =>
-          p.id === arrival.productId
+          p.id.toString() === arrival.productId
             ? { 
                 ...p, 
                 stockQuantity: p.stockQuantity + arrival.quantity,
@@ -806,76 +1206,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         : 'Ошибка при приеме товара');
       throw error;
     }
-  };
-
-  // ============== Legacy Product Arrival Functions ==============
-
-  const updateProductArrival = (id: string, arrivalData: Partial<ProductArrival>) => {
-    setProductArrivals(prev =>
-      prev.map(arrival =>
-        arrival.id === id ? { ...arrival, ...arrivalData } : arrival
-      )
-    );
-  };
-
-  const deleteProductArrival = (id: string) => {
-    setProductArrivals(prev => prev.filter(arrival => arrival.id !== id));
-  };
-
-  // ============== Cart Functions ==============
-
-  const addToCart = (item: CartItem) => {
-    setCart(prevCart => {
-      const existingItem = prevCart.find(cartItem => cartItem.product.id === item.product.id);
-      
-      if (existingItem) {
-        return prevCart.map(cartItem =>
-          cartItem.product.id === item.product.id
-            ? { ...cartItem, quantity: cartItem.quantity + item.quantity }
-            : cartItem
-        );
-      } else {
-        return [...prevCart, item];
-      }
-    });
-  };
-
-  const removeFromCart = (itemId: string) => {
-    setCart(prevCart => prevCart.filter(item => item.id !== itemId));
-  };
-
-  const updateCartItem = (itemId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(itemId);
-      return;
-    }
-    
-    setCart(prevCart =>
-      prevCart.map(item =>
-        item.id === itemId ? { ...item, quantity } : item
-      )
-    );
-  };
-
-  const clearCart = () => {
-    setCart([]);
-  };
-
-  const addSale = (sale: Sale) => {
-    setSales(prevSales => [sale, ...prevSales]);
-    
-    setProducts(prevProducts =>
-      prevProducts.map(product => {
-        const saleItem = sale.items.find(item => item.product.id === product.id);
-        if (saleItem) {
-          return {
-            ...product,
-            stockQuantity: product.stockQuantity - saleItem.quantity,
-          };
-        }
-        return product;
-      })
-    );
   };
 
   // ============== Customer Transaction Functions ==============
@@ -1004,6 +1334,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCategories([]);
       setProductArrivals([]);
       setAcceptanceHistory([]);
+      setCart([]);
+      setThicknesses([]);
+      setOrders([]);
       
       console.log('6. Redirecting to login');
       window.location.href = '/login';
@@ -1021,6 +1354,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (user) {
       fetchCategories();
       fetchAcceptanceHistory();
+      fetchBasket();
+      fetchThicknesses();
+      fetchOrders();
     }
   }, [user]);
 
@@ -1073,6 +1409,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     customerTransactions,
     categories,
     acceptanceHistory,
+    thicknesses,
+    orders,
     
     // Loading states
     isFetchingCustomers,
@@ -1089,6 +1427,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     isDeletingProduct,
     isFetchingCategories,
     isFetchingAcceptanceHistory,
+    isFetchingBasket,
+    isFetchingThicknesses,
+    isCreatingOrder,
+    isFetchingOrders,
     
     // Auth functions
     login,
@@ -1101,7 +1443,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     removeFromCart,
     updateCartItem,
     clearCart,
-    addSale,
+    fetchBasket,
+    
+    // Service functions
+    addCuttingService,
+    addEdgeBandingService,
+    
+    // Thickness API functions
+    fetchThicknesses,
+    addThickness,
+    deleteThickness,
+    
+    // Order API functions
+    createOrder,
+    fetchOrders,
     
     // User API functions
     fetchUsers,
@@ -1121,10 +1476,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Acceptance API functions
     fetchAcceptanceHistory,
     addProductArrival,
-    
-    // Legacy Product Arrival functions
-    updateProductArrival,
-    deleteProductArrival,
     
     // Customer Transaction functions
     addCustomerTransaction,

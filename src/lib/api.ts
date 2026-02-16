@@ -11,7 +11,13 @@ import {
   UpdateProductData,
   CreateAcceptanceData,
   ApiAcceptance,
-  ApiAcceptanceHistory
+  ApiAcceptanceHistory,
+  CreateCuttingData,
+  ApiCutting,
+  CreateBandingData,
+  ApiBanding,
+  CreateThicknessData,
+  ApiThickness
 } from "./types";
 
 // api.ts
@@ -254,8 +260,6 @@ export const productApi = {
   },
 };
 
-// Add this to your api.ts file
-
 // Acceptance (Product Receiving) API
 export const acceptanceApi = {
   // Create new acceptance
@@ -269,5 +273,146 @@ export const acceptanceApi = {
   // Get acceptance history
   getHistory: (): Promise<ApiAcceptanceHistory[]> => {
     return apiRequest<ApiAcceptanceHistory[]>('/acceptance/history/');
+  },
+};
+
+// Basket API
+export const basketApi = {
+  // Get basket items
+  getBasket: (): Promise<{
+    id: number;
+    items: Array<{
+      id: number;
+      product: Array<{
+        id: number;
+        name: string;
+        color: string;
+        quality: string;
+        width: string;
+        height: string;
+        thick: string;
+        arrival_price: string;
+        sale_price: string;
+        count: number;
+        arrival_date: string;
+        description: string;
+        is_active: boolean;
+        category: number;
+      }>;
+    }>;
+  }> => {
+    return apiRequest('/order/basket/');
+  },
+
+  // Add item to basket
+  addToBasket: (productId: number): Promise<any> => {
+    return apiRequest('/order/basket/', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId }),
+    });
+  },
+
+  // Remove specific item from basket
+  removeFromBasket: (itemId: number): Promise<void> => {
+    return apiRequest(`/order/basket/${itemId}/`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Clear entire basket
+  clearBasket: (): Promise<void> => {
+    return apiRequest('/order/basket/', {
+      method: 'DELETE',
+    });
+  },
+};
+
+// Cutting Service API
+export const cuttingApi = {
+  // Get all cutting services
+  getAll: (): Promise<ApiCutting[]> => {
+    return apiRequest('/order/cutting/');
+  },
+
+  // Create cutting service
+  create: (data: CreateCuttingData): Promise<ApiCutting> => {
+    return apiRequest('/order/cutting/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete cutting service
+  delete: (id: number): Promise<void> => {
+    return apiRequest(`/order/cutting/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// Thickness API (for edge banding)
+export const thicknessApi = {
+  // Get all thicknesses
+  getAll: (): Promise<ApiThickness[]> => {
+    return apiRequest('/order/thickness/');
+  },
+
+  // Create thickness
+  create: (data: CreateThicknessData): Promise<ApiThickness> => {
+    return apiRequest('/order/thickness/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete thickness
+  delete: (id: number): Promise<void> => {
+    return apiRequest(`/order/thickness/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// Edge Banding Service API
+export const bandingApi = {
+  // Get all banding services
+  getAll: (): Promise<ApiBanding[]> => {
+    return apiRequest('/order/banding/');
+  },
+
+  // Create banding service
+  create: (data: CreateBandingData): Promise<ApiBanding> => {
+    return apiRequest('/order/banding/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete banding service
+  delete: (id: number): Promise<void> => {
+    return apiRequest(`/order/banding/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// Order API
+export const orderApi = {
+  // Create new order
+  create: (data: CreateOrderData): Promise<ApiOrder> => {
+    return apiRequest('/order/order/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Get all orders
+  getAll: (): Promise<ApiOrder[]> => {
+    return apiRequest('/order/order/');
+  },
+
+  // Get single order
+  getById: (id: number): Promise<ApiOrder> => {
+    return apiRequest(`/order/order/${id}/`);
   },
 };

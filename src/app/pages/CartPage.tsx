@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
-import { CartItem, EdgeBandingPrice, CuttingService, EdgeBandingService } from '../../lib/types';
+import { CartItem, EdgeBandingPrice, CuttingService, EdgeBandingService, CreateOrderData, ApiOrder } from '../../lib/types';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -9,28 +9,85 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../compone
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Separator } from '../components/ui/separator';
-import { Trash2, Plus, Scissors, Ruler, ShoppingBag, Receipt as ReceiptIcon } from 'lucide-react';
+import { Trash2, Plus, Scissors, Ruler, ShoppingBag, Receipt as ReceiptIcon, Loader2, Minus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 
-const edgeBandingPrices: EdgeBandingPrice[] = [
-  { thickness: 0.4, label: '0.4 cm', price: 2800 },
-  { thickness: 1, label: '1 cm', price: 3200 },
-  { thickness: 2, label: '2 cm', price: 3500 },
-  { thickness: 0.32, label: '0.32 cm (Premium)', price: 6000 },
-];
+const CART_STORAGE_KEY = 'app_cart';
 
 export const CartPage: React.FC = () => {
-  const { cart, updateCartItem, removeFromCart, completeSale, currentUser, language, clearCart, customers } = useApp();
+  const { 
+    cart: contextCart, 
+    updateCartItem, 
+    removeFromCart, 
+    createOrder,
+    user, 
+    language, 
+    clearCart, 
+    customers, 
+    fetchBasket,
+    isFetchingBasket,
+    addCuttingService,
+    addEdgeBandingService,
+    thicknesses,
+    fetchThicknesses,
+    isCreatingOrder
+  } = useApp();
+  
   const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
   const [isCuttingDialogOpen, setIsCuttingDialogOpen] = useState(false);
   const [isEdgeBandingDialogOpen, setIsEdgeBandingDialogOpen] = useState(false);
   const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
-  const [receiptNumber, setReceiptNumber] = useState<string | null>(null);
+  const [orderSuccess, setOrderSuccess] = useState<ApiOrder | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('anonymous');
+  const [isLoading, setIsLoading] = useState(false);
+  const [removingItems, setRemovingItems] = useState<Record<string, boolean>>({});
+  const [updatingQuantities, setUpdatingQuantities] = useState<Record<string, boolean>>({});
+  const [isAddingService, setIsAddingService] = useState<Record<string, boolean>>({});
+  const [localCart, setLocalCart] = useState<CartItem[]>([]);
   const navigate = useNavigate();
 
   const t = (key: string) => getTranslation(language, key as any);
+
+  // Load cart from localStorage on mount
+  useEffect(() => {
+    const savedCart = localStorage.getItem(CART_STORAGE_KEY);
+    if (savedCart) {
+      try {
+        const parsedCart = JSON.parse(savedCart);
+        setLocalCart(parsedCart);
+      } catch (error) {
+        console.error('Failed to parse saved cart:', error);
+      }
+    }
+  }, []);
+
+  // Save cart to localStorage whenever it changes
+  useEffect(() => {
+    if (localCart.length > 0) {
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(localCart));
+    } else {
+      localStorage.removeItem(CART_STORAGE_KEY);
+    }
+  }, [localCart]);
+
+  // Sync localCart with context cart
+  useEffect(() => {
+    if (contextCart.length > 0) {
+      setLocalCart(contextCart);
+    }
+  }, [contextCart]);
+
+  // Fetch basket and thicknesses on component mount
+  useEffect(() => {
+    if (user) {
+      fetchBasket();
+      fetchThicknesses();
+    }
+  }, [user]);
+
+  // Use localCart for display, fallback to contextCart
+  const displayCart = localCart.length > 0 ? localCart : contextCart;
 
   // Cutting service form
   const [cuttingForm, setCuttingForm] = useState({
@@ -40,7 +97,7 @@ export const CartPage: React.FC = () => {
 
   // Edge banding form
   const [edgeBandingForm, setEdgeBandingForm] = useState({
-    thickness: 0.4,
+    thicknessId: 0,
     width: 0,
     height: 0,
     pricePerMeter: 2800,
@@ -49,9 +106,25 @@ export const CartPage: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mixed' | 'credit'>('cash');
   const [discount, setDiscount] = useState(0);
   const [amountPaid, setAmountPaid] = useState(0);
+  const [discountType, setDiscountType] = useState<'p' | 'c'>('c'); // 'p' for percentage, 'c' for fixed amount
 
-  const handleAddCutting = () => {
+  const handleAddCutting = async () => {
     if (!selectedItem) return;
+
+    // Validate form data
+    if (cuttingForm.numberOfBoards <= 0) {
+      toast.error(language === 'uz' 
+        ? 'Kesish soni 0 dan katta bo\'lishi kerak' 
+        : 'Количество резки должно быть больше 0');
+      return;
+    }
+
+    if (cuttingForm.pricePerCut <= 0) {
+      toast.error(language === 'uz' 
+        ? 'Narx 0 dan katta bo\'lishi kerak' 
+        : 'Цена должна быть больше 0');
+      return;
+    }
 
     const cuttingService: CuttingService = {
       id: Date.now().toString(),
@@ -59,31 +132,94 @@ export const CartPage: React.FC = () => {
       pricePerCut: cuttingForm.pricePerCut,
       total: cuttingForm.numberOfBoards * cuttingForm.pricePerCut,
     };
-
-    updateCartItem(selectedItem.id, { cuttingService });
-    setIsCuttingDialogOpen(false);
-    toast.success(language === 'uz' ? 'Kesish xizmati qo\'shildi' : 'Услуга распила добавлена');
+    
+    setIsAddingService(prev => ({ ...prev, [selectedItem.id]: true }));
+    
+    try {
+      await addCuttingService(selectedItem.id, cuttingService);
+      
+      // Update local cart with the new service
+      const updatedCart = localCart.map(item => 
+        item.id === selectedItem.id 
+          ? { ...item, cuttingService } 
+          : item
+      );
+      setLocalCart(updatedCart);
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+      
+      setIsCuttingDialogOpen(false);
+      toast.success(language === 'uz' 
+        ? 'Kesish xizmati qo\'shildi' 
+        : 'Услуга распила добавлена');
+    } catch (error: any) {
+      console.error('Failed to add cutting service:', error);
+      toast.error(language === 'uz' 
+        ? `Kesish xizmati qo\'shishda xatolik: ${error.message}` 
+        : `Ошибка при добавлении услуги распила: ${error.message}`);
+    } finally {
+      setIsAddingService(prev => ({ ...prev, [selectedItem.id]: false }));
+    }
   };
 
-  const handleAddEdgeBanding = () => {
+  const handleAddEdgeBanding = async () => {
     if (!selectedItem) return;
+
+    const selectedThickness = thicknesses.find(t => t.id === edgeBandingForm.thicknessId);
+    if (!selectedThickness) {
+      toast.error(language === 'uz' ? 'Qalinlik tanlang' : 'Выберите толщину');
+      return;
+    }
+
+    // Validate dimensions
+    if (edgeBandingForm.width <= 0 || edgeBandingForm.height <= 0) {
+      toast.error(language === 'uz' 
+        ? 'O\'lchamlar 0 dan katta bo\'lishi kerak' 
+        : 'Размеры должны быть больше 0');
+      return;
+    }
 
     const perimeter = 2 * (edgeBandingForm.width + edgeBandingForm.height);
     const linearMeters = perimeter / 1000; // Convert mm to meters
+    const pricePerMeter = parseFloat(selectedThickness.price);
+    const total = linearMeters * pricePerMeter;
 
     const edgeBandingService: EdgeBandingService = {
       id: Date.now().toString(),
-      thickness: edgeBandingForm.thickness,
+      thickness: parseFloat(selectedThickness.size),
+      thicknessId: selectedThickness.id,
       width: edgeBandingForm.width,
       height: edgeBandingForm.height,
-      pricePerMeter: edgeBandingForm.pricePerMeter,
+      pricePerMeter: pricePerMeter,
       linearMeters,
-      total: linearMeters * edgeBandingForm.pricePerMeter,
+      total,
     };
-
-    updateCartItem(selectedItem.id, { edgeBandingService });
-    setIsEdgeBandingDialogOpen(false);
-    toast.success(language === 'uz' ? 'Kromkalash xizmati qo\'shildi' : 'Услуга кромкования добавлена');
+    
+    setIsAddingService(prev => ({ ...prev, [selectedItem.id]: true }));
+    
+    try {
+      await addEdgeBandingService(selectedItem.id, edgeBandingService);
+      
+      // Update local cart with the new service
+      const updatedCart = localCart.map(item => 
+        item.id === selectedItem.id 
+          ? { ...item, edgeBandingService } 
+          : item
+      );
+      setLocalCart(updatedCart);
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+      
+      setIsEdgeBandingDialogOpen(false);
+      toast.success(language === 'uz' 
+        ? 'Kromkalash xizmati qo\'shildi' 
+        : 'Услуга кромкования добавлена');
+    } catch (error: any) {
+      console.error('Failed to add edge banding service:', error);
+      toast.error(language === 'uz' 
+        ? `Kromkalash xizmati qo\'shishda xatolik: ${error.message}` 
+        : `Ошибка при добавлении услуги кромкования: ${error.message}`);
+    } finally {
+      setIsAddingService(prev => ({ ...prev, [selectedItem.id]: false }));
+    }
   };
 
   const calculateItemTotal = (item: CartItem): number => {
@@ -93,50 +229,157 @@ export const CartPage: React.FC = () => {
     return total;
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + calculateItemTotal(item), 0);
-  const total = subtotal - discount;
-
-  const handleCheckout = () => {
-    if (cart.length === 0) return;
-
-    const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
-    
-    const saleData: any = {
-      salespersonId: currentUser!.id,
-      salespersonName: currentUser!.name,
-      items: cart,
-      subtotal,
-      discount,
-      total,
-      paymentMethod,
-    };
-
-    // If payment method is credit, add payment tracking
-    if (paymentMethod === 'credit') {
-      saleData.amountPaid = amountPaid;
-      saleData.amountDue = total - amountPaid;
+  const subtotal = displayCart.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+  
+  // Calculate discount based on type
+  const calculateDiscount = () => {
+    if (discountType === 'p') {
+      // Percentage discount
+      return (subtotal * discount) / 100;
+    } else {
+      // Fixed amount discount
+      return Math.min(discount, subtotal);
     }
+  };
+  
+  const discountAmount = calculateDiscount();
+  const total = subtotal - discountAmount;
 
-    // If a regular customer is selected, add customer info
-    if (selectedCustomer) {
-      saleData.customerId = selectedCustomer.id;
-      saleData.customerName = selectedCustomer.name;
+  const handleCheckout = async () => {
+    if (displayCart.length === 0) return;
+
+    setIsLoading(true);
+    try {
+      // Prepare order items
+      const items = displayCart.map(item => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+      }));
+
+      // Prepare cutting service if exists (use first item's cutting service)
+      const cuttingItem = displayCart.find(item => item.cuttingService);
+      const cutting = cuttingItem?.cuttingService ? {
+        count: cuttingItem.cuttingService.numberOfBoards,
+        price: cuttingItem.cuttingService.pricePerCut.toString(),
+      } : undefined;
+
+      // Prepare banding service if exists (use first item's banding service)
+      const bandingItem = displayCart.find(item => item.edgeBandingService);
+      const banding = bandingItem?.edgeBandingService ? {
+        thickness: bandingItem.edgeBandingService.thicknessId || 0,
+        width: bandingItem.edgeBandingService.width.toString(),
+        height: bandingItem.edgeBandingService.height.toString(),
+      } : undefined;
+
+      const orderData: CreateOrderData = {
+        items,
+        payment_method: paymentMethod,
+        discount: discountAmount.toString(),
+        discount_type: discountType,
+        covered_amount: paymentMethod === 'credit' ? amountPaid.toString() : total.toString(),
+        ...(cutting && { cutting }),
+        ...(banding && { banding }),
+      };
+
+      // Create order via API
+      const newOrder = await createOrder(orderData);
+
+      // Clear local storage and cart
+      localStorage.removeItem(CART_STORAGE_KEY);
+      setLocalCart([]);
+      await clearCart();
+
+      setOrderSuccess(newOrder);
+      setSelectedCustomerId('anonymous');
+      setPaymentMethod('cash');
+      setDiscount(0);
+      setAmountPaid(0);
+      toast.success(language === 'uz' 
+        ? 'Buyurtma muvaffaqiyatli yaratildi' 
+        : 'Заказ успешно создан');
+    } catch (error: any) {
+      console.error('Checkout error:', error);
+      toast.error(language === 'uz' 
+        ? `Buyurtma yaratishda xatolik: ${error.message}` 
+        : `Ошибка при создании заказа: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+      setIsCheckoutDialogOpen(false);
     }
-
-    const receiptNum = completeSale(saleData);
-
-    setReceiptNumber(receiptNum);
-    setSelectedCustomerId('anonymous'); // Reset to anonymous
-    setPaymentMethod('cash'); // Reset to cash
-    setAmountPaid(0); // Reset amount paid
-    toast.success(t('saleCompleted'));
   };
 
   const handlePrintReceipt = () => {
     window.print();
   };
 
-  if (receiptNumber) {
+  const handleRemoveItem = async (itemId: string) => {
+    setRemovingItems(prev => ({ ...prev, [itemId]: true }));
+    try {
+      await removeFromCart(itemId);
+      
+      // Update local cart
+      const updatedCart = localCart.filter(item => item.id !== itemId);
+      setLocalCart(updatedCart);
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+      
+      toast.success(language === 'uz' 
+        ? 'Mahsulot savatchadan o\'chirildi' 
+        : 'Товар удален из корзины');
+    } catch (error) {
+      toast.error(language === 'uz' 
+        ? 'O\'chirishda xatolik yuz berdi' 
+        : 'Ошибка при удалении');
+    } finally {
+      setRemovingItems(prev => ({ ...prev, [itemId]: false }));
+    }
+  };
+
+  const handleUpdateQuantity = async (itemId: string, newQuantity: number) => {
+    if (newQuantity < 1) return;
+    
+    setUpdatingQuantities(prev => ({ ...prev, [itemId]: true }));
+    try {
+      await updateCartItem(itemId, newQuantity);
+      
+      // Update local cart
+      const updatedCart = localCart.map(item => 
+        item.id === itemId ? { ...item, quantity: newQuantity } : item
+      );
+      setLocalCart(updatedCart);
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+      
+    } catch (error) {
+      toast.error(language === 'uz' 
+        ? 'Miqdorni yangilashda xatolik yuz berdi' 
+        : 'Ошибка при обновлении количества');
+    } finally {
+      setUpdatingQuantities(prev => ({ ...prev, [itemId]: false }));
+    }
+  };
+
+  const handleClearCart = async () => {
+    if (window.confirm(language === 'uz' 
+      ? 'Savatchani tozalashni istaysizmi?' 
+      : 'Вы уверены, что хотите очистить корзину?')) {
+      try {
+        await clearCart();
+        
+        // Clear local storage
+        localStorage.removeItem(CART_STORAGE_KEY);
+        setLocalCart([]);
+        
+        toast.success(language === 'uz' 
+          ? 'Savatcha tozalandi' 
+          : 'Корзина очищена');
+      } catch (error) {
+        toast.error(language === 'uz' 
+          ? 'Tozalashda xatolik yuz berdi' 
+          : 'Ошибка при очистке');
+      }
+    }
+  };
+
+  if (orderSuccess) {
     return (
       <div className="space-y-6">
         <Card className="max-w-2xl mx-auto">
@@ -145,19 +388,24 @@ export const CartPage: React.FC = () => {
               <ReceiptIcon className="h-8 w-8 text-green-600 dark:text-green-400" />
             </div>
             <CardTitle className="text-2xl text-green-700 dark:text-green-400">
-              {language === 'uz' ? 'Sotuv muvaffaqiyatli yakunlandi!' : 'Продажа успешно завершена!'}
+              {language === 'uz' ? 'Buyurtma muvaffaqiyatli yaratildi!' : 'Заказ успешно создан!'}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
             <div className="space-y-4">
               <div className="text-center">
-                <p className="text-sm text-gray-500 dark:text-gray-400">{t('receiptNumber')}</p>
-                <p className="text-2xl font-bold">{receiptNumber}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t('orderNumber')}</p>
+                <p className="text-2xl font-bold">#{orderSuccess.id}</p>
               </div>
               <Separator />
               <div className="text-center space-y-2">
                 <p className="text-sm text-gray-500 dark:text-gray-400">{t('total')}</p>
-                <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">{total.toLocaleString()} UZS</p>
+                <p className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+                  {parseFloat(orderSuccess.total_price).toLocaleString()} UZS
+                </p>
+              </div>
+              <div className="text-center text-sm text-gray-500 dark:text-gray-400">
+                {new Date(orderSuccess.created_at).toLocaleString()}
               </div>
             </div>
           </CardContent>
@@ -169,14 +417,25 @@ export const CartPage: React.FC = () => {
               variant="outline" 
               className="w-full" 
               onClick={() => {
-                setReceiptNumber(null);
+                setOrderSuccess(null);
                 navigate('/products');
               }}
             >
-              {language === 'uz' ? 'Yangi sotuv' : 'Новая продажа'}
+              {language === 'uz' ? 'Yangi buyurtma' : 'Новый заказ'}
             </Button>
           </CardFooter>
         </Card>
+      </div>
+    );
+  }
+
+  if (isFetchingBasket) {
+    return (
+      <div className="flex justify-center items-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <span className="ml-2 text-gray-500">
+          {language === 'uz' ? 'Savatcha yuklanmoqda...' : 'Загрузка корзины...'}
+        </span>
       </div>
     );
   }
@@ -190,14 +449,14 @@ export const CartPage: React.FC = () => {
             {language === 'uz' ? 'Savatchadagi mahsulotlar va xizmatlar' : 'Продукты и услуги в корзине'}
           </p>
         </div>
-        {cart.length > 0 && (
-          <Button variant="outline" onClick={() => clearCart()}>
+        {displayCart.length > 0 && (
+          <Button variant="outline" onClick={handleClearCart}>
             {language === 'uz' ? 'Savatchani tozalash' : 'Очистить корзину'}
           </Button>
         )}
       </div>
 
-      {cart.length === 0 ? (
+      {displayCart.length === 0 ? (
         <Card>
           <CardContent className="py-16">
             <div className="text-center">
@@ -212,226 +471,285 @@ export const CartPage: React.FC = () => {
       ) : (
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-4">
-            {cart.map((item) => (
-              <Card key={item.id}>
-                <CardContent className="p-6">
-                  <div className="flex gap-4">
-                    <div 
-                      className="h-24 w-24 rounded-lg border-2 flex-shrink-0"
-                      style={{ backgroundColor: item.product.color }}
-                    />
-                    <div className="flex-1 space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-semibold text-lg">{item.product.name}</h3>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                            {item.product.width} × {item.product.height} × {item.product.thickness} mm
-                          </p>
+            {displayCart.map((item) => {
+              const isRemoving = removingItems[item.id];
+              const isUpdating = updatingQuantities[item.id];
+              const isAdding = isAddingService[item.id];
+              
+              return (
+                <Card key={item.id} className={isRemoving ? 'opacity-50' : ''}>
+                  <CardContent className="p-6">
+                    <div className="flex gap-4">
+                      <div 
+                        className="h-24 w-24 rounded-lg border-2 flex-shrink-0"
+                        style={{ backgroundColor: item.product.color }}
+                      />
+                      <div className="flex-1 space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="font-semibold text-lg">{item.product.name}</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              {item.product.width} × {item.product.height} × {item.product.thickness} mm
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveItem(item.id)}
+                            disabled={isRemoving}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            {isRemoving ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFromCart(item.id)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
 
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          <Label>{t('quantity')}:</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            max={item.product.stockQuantity}
-                            value={item.quantity}
-                            onChange={(e) => updateCartItem(item.id, { quantity: Number(e.target.value) })}
-                            className="w-20"
-                          />
-                        </div>
-                        <p className="font-semibold">{item.product.unitPrice.toLocaleString()} UZS</p>
-                      </div>
-
-                      {/* Services */}
-                      <div className="flex flex-wrap gap-2">
-                        <Dialog open={isCuttingDialogOpen && selectedItem?.id === item.id} onOpenChange={(open) => {
-                          setIsCuttingDialogOpen(open);
-                          if (open) setSelectedItem(item);
-                        }}>
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              <Scissors className="mr-2 h-4 w-4" />
-                              {item.cuttingService ? language === 'uz' ? 'Kesishni tahrirlash' : 'Изменить распил' : t('addCutting')}
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>{t('cuttingService')}</DialogTitle>
-                              <DialogDescription>
-                                {language === 'uz' 
-                                  ? 'Kesish xizmati parametrlarini kiriting' 
-                                  : 'Введите параметры услуги резки'}
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4">
-                              <div>
-                                <Label>{t('numberOfBoards')}</Label>
-                                <Input
-                                  type="number"
-                                  min="1"
-                                  value={cuttingForm.numberOfBoards}
-                                  onChange={(e) => setCuttingForm({ ...cuttingForm, numberOfBoards: Number(e.target.value) })}
-                                />
-                              </div>
-                              <div>
-                                <Label>{t('pricePerCut')} (UZS)</Label>
-                                <Input
-                                  type="number"
-                                  value={cuttingForm.pricePerCut}
-                                  onChange={(e) => setCuttingForm({ ...cuttingForm, pricePerCut: Number(e.target.value) })}
-                                />
-                              </div>
-                              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
-                                <p className="text-sm text-gray-600 dark:text-gray-400">{t('total')}</p>
-                                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                                  {(cuttingForm.numberOfBoards * cuttingForm.pricePerCut).toLocaleString()} UZS
-                                </p>
-                              </div>
-                              <Button className="w-full" onClick={handleAddCutting}>
-                                {t('add')}
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <Label>{t('quantity')}:</Label>
+                            <div className="flex items-center border rounded-lg">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-l-lg"
+                                onClick={() => handleUpdateQuantity(item.id, item.quantity - 1)}
+                                disabled={item.quantity <= 1 || isUpdating}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <span className="w-10 text-center text-sm">
+                                {isUpdating ? (
+                                  <Loader2 className="h-3 w-3 animate-spin mx-auto" />
+                                ) : (
+                                  item.quantity
+                                )}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-r-lg"
+                                onClick={() => handleUpdateQuantity(item.id, item.quantity + 1)}
+                                disabled={item.quantity >= (item.product.stockQuantity || 0) || isUpdating}
+                              >
+                                <Plus className="h-3 w-3" />
                               </Button>
                             </div>
-                          </DialogContent>
-                        </Dialog>
+                          </div>
+                          <p className="font-semibold">{item.product.unitPrice.toLocaleString()} UZS</p>
+                        </div>
 
-                        <Dialog open={isEdgeBandingDialogOpen && selectedItem?.id === item.id} onOpenChange={(open) => {
-                          setIsEdgeBandingDialogOpen(open);
-                          if (open) {
-                            setSelectedItem(item);
-                            setEdgeBandingForm({
-                              ...edgeBandingForm,
-                              width: item.product.width,
-                              height: item.product.height,
-                            });
-                          }
-                        }}>
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              <Ruler className="mr-2 h-4 w-4" />
-                              {item.edgeBandingService ? language === 'uz' ? 'Kromkani tahrirlash' : 'Изменить кромку' : t('addEdgeBanding')}
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>{t('edgeBandingService')}</DialogTitle>
-                              <DialogDescription>
-                                {language === 'uz' 
-                                  ? 'Kromkalash xizmati parametrlarini kiriting' 
-                                  : 'Введите параметры услуги кромкования'}
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4">
-                              <div>
-                                <Label>{t('thickness')}</Label>
-                                <Select 
-                                  value={edgeBandingForm.thickness.toString()} 
-                                  onValueChange={(value) => {
-                                    const selected = edgeBandingPrices.find(p => p.thickness === Number(value));
-                                    if (selected) {
-                                      setEdgeBandingForm({
-                                        ...edgeBandingForm,
-                                        thickness: selected.thickness,
-                                        pricePerMeter: selected.price,
-                                      });
-                                    }
-                                  }}
+                        {/* Services */}
+                        <div className="flex flex-wrap gap-2">
+                          <Dialog open={isCuttingDialogOpen && selectedItem?.id === item.id} onOpenChange={(open) => {
+                            setIsCuttingDialogOpen(open);
+                            if (open) setSelectedItem(item);
+                          }}>
+                            <DialogTrigger asChild>
+                              <Button variant="outline" size="sm" disabled={isRemoving || isAdding}>
+                                <Scissors className="mr-2 h-4 w-4" />
+                                {item.cuttingService ? (
+                                  language === 'uz' ? 'Kesish tahrirlandi' : 'Распил изменен'
+                                ) : (
+                                  t('addCutting')
+                                )}
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>{t('cuttingService')}</DialogTitle>
+                                <DialogDescription>
+                                  {language === 'uz' 
+                                    ? 'Kesish xizmati parametrlarini kiriting' 
+                                    : 'Введите параметры услуги резки'}
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div>
+                                  <Label>{t('numberOfBoards')}</Label>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    value={cuttingForm.numberOfBoards}
+                                    onChange={(e) => setCuttingForm({ ...cuttingForm, numberOfBoards: Number(e.target.value) })}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>{t('pricePerCut')} (UZS)</Label>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    value={cuttingForm.pricePerCut}
+                                    onChange={(e) => setCuttingForm({ ...cuttingForm, pricePerCut: Number(e.target.value) })}
+                                  />
+                                </div>
+                                <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">{t('total')}</p>
+                                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                    {(cuttingForm.numberOfBoards * cuttingForm.pricePerCut).toLocaleString()} UZS
+                                  </p>
+                                </div>
+                                <Button 
+                                  className="w-full" 
+                                  onClick={handleAddCutting}
+                                  disabled={isAdding}
                                 >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {edgeBandingPrices.map((price) => (
-                                      <SelectItem key={price.thickness} value={price.thickness.toString()}>
-                                        {price.label} - {price.price.toLocaleString()} UZS/{language === 'uz' ? 'м' : 'м'}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  {isAdding ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : null}
+                                  {t('add')}
+                                </Button>
                               </div>
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <Label>{t('width')} (mm)</Label>
-                                  <Input
-                                    type="number"
-                                    value={edgeBandingForm.width}
-                                    onChange={(e) => setEdgeBandingForm({ ...edgeBandingForm, width: Number(e.target.value) })}
-                                  />
-                                </div>
-                                <div>
-                                  <Label>{t('height')} (mm)</Label>
-                                  <Input
-                                    type="number"
-                                    value={edgeBandingForm.height}
-                                    onChange={(e) => setEdgeBandingForm({ ...edgeBandingForm, height: Number(e.target.value) })}
-                                  />
-                                </div>
-                              </div>
-                              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 space-y-2">
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-gray-600 dark:text-gray-400">{t('linearMeters')}</span>
-                                  <span className="font-medium">
-                                    {((2 * (edgeBandingForm.width + edgeBandingForm.height)) / 1000).toFixed(2)} {language === 'uz' ? 'м' : 'м'}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600 dark:text-gray-400">{t('total')}</span>
-                                  <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                                    {(((2 * (edgeBandingForm.width + edgeBandingForm.height)) / 1000) * edgeBandingForm.pricePerMeter).toLocaleString()} UZS
-                                  </span>
-                                </div>
-                              </div>
-                              <Button className="w-full" onClick={handleAddEdgeBanding}>
-                                {t('add')}
+                            </DialogContent>
+                          </Dialog>
+
+                          <Dialog open={isEdgeBandingDialogOpen && selectedItem?.id === item.id} onOpenChange={(open) => {
+                            setIsEdgeBandingDialogOpen(open);
+                            if (open) {
+                              setSelectedItem(item);
+                              setEdgeBandingForm({
+                                ...edgeBandingForm,
+                                width: item.product.width,
+                                height: item.product.height,
+                              });
+                            }
+                          }}>
+                            <DialogTrigger asChild>
+                              <Button variant="outline" size="sm" disabled={isRemoving || isAdding}>
+                                <Ruler className="mr-2 h-4 w-4" />
+                                {item.edgeBandingService ? (
+                                  language === 'uz' ? 'Kromka tahrirlandi' : 'Кромка изменена'
+                                ) : (
+                                  t('addEdgeBanding')
+                                )}
                               </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-
-                      {/* Service summaries */}
-                      {(item.cuttingService || item.edgeBandingService) && (
-                        <div className="space-y-2 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-sm">
-                          {item.cuttingService && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600 dark:text-gray-400">
-                                {t('cuttingService')} ({item.cuttingService.numberOfBoards}×)
-                              </span>
-                              <span className="font-medium">{item.cuttingService.total.toLocaleString()} UZS</span>
-                            </div>
-                          )}
-                          {item.edgeBandingService && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600 dark:text-gray-400">
-                                {t('edgeBandingService')} ({item.edgeBandingService.linearMeters.toFixed(2)}{language === 'uz' ? 'м' : 'м'})
-                              </span>
-                              <span className="font-medium">{item.edgeBandingService.total.toLocaleString()} UZS</span>
-                            </div>
-                          )}
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>{t('edgeBandingService')}</DialogTitle>
+                                <DialogDescription>
+                                  {language === 'uz' 
+                                    ? 'Kromkalash xizmati parametrlarini kiriting' 
+                                    : 'Введите параметры услуги кромкования'}
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div>
+                                  <Label>{t('thickness')}</Label>
+                                  <Select 
+                                    value={edgeBandingForm.thicknessId.toString()} 
+                                    onValueChange={(value) => {
+                                      const selected = thicknesses.find(t => t.id === parseInt(value));
+                                      if (selected) {
+                                        setEdgeBandingForm({
+                                          ...edgeBandingForm,
+                                          thicknessId: selected.id,
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder={language === 'uz' ? 'Qalinlik tanlang' : 'Выберите толщину'} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {thicknesses.map((thickness) => (
+                                        <SelectItem key={thickness.id} value={thickness.id.toString()}>
+                                          {thickness.size} mm - {parseFloat(thickness.price).toLocaleString()} UZS/{language === 'uz' ? 'м' : 'м'}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <Label>{t('width')} (mm)</Label>
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      value={edgeBandingForm.width}
+                                      onChange={(e) => setEdgeBandingForm({ ...edgeBandingForm, width: Number(e.target.value) })}
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label>{t('height')} (mm)</Label>
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      value={edgeBandingForm.height}
+                                      onChange={(e) => setEdgeBandingForm({ ...edgeBandingForm, height: Number(e.target.value) })}
+                                    />
+                                  </div>
+                                </div>
+                                {edgeBandingForm.thicknessId !== 0 && (
+                                  <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                      <span className="text-gray-600 dark:text-gray-400">{t('linearMeters')}</span>
+                                      <span className="font-medium">
+                                        {((2 * (edgeBandingForm.width + edgeBandingForm.height)) / 1000).toFixed(2)} {language === 'uz' ? 'м' : 'м'}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600 dark:text-gray-400">{t('total')}</span>
+                                      <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                        {((2 * (edgeBandingForm.width + edgeBandingForm.height) / 1000) * 
+                                          (thicknesses.find(t => t.id === edgeBandingForm.thicknessId)?.price 
+                                            ? parseFloat(thicknesses.find(t => t.id === edgeBandingForm.thicknessId)!.price) 
+                                            : 0)).toLocaleString()} UZS
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                                <Button 
+                                  className="w-full" 
+                                  onClick={handleAddEdgeBanding}
+                                  disabled={isAdding || edgeBandingForm.thicknessId === 0}
+                                >
+                                  {isAdding ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : null}
+                                  {t('add')}
+                                </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                         </div>
-                      )}
 
-                      <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
-                        <span className="font-medium">{language === 'uz' ? 'Jami:' : 'Итого:'}</span>
-                        <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                          {calculateItemTotal(item).toLocaleString()} UZS
-                        </span>
+                        {/* Service summaries */}
+                        {(item.cuttingService || item.edgeBandingService) && (
+                          <div className="space-y-2 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-sm">
+                            {item.cuttingService && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600 dark:text-gray-400">
+                                  {t('cuttingService')} ({item.cuttingService.numberOfBoards}×)
+                                </span>
+                                <span className="font-medium">{item.cuttingService.total.toLocaleString()} UZS</span>
+                              </div>
+                            )}
+                            {item.edgeBandingService && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600 dark:text-gray-400">
+                                  {t('edgeBandingService')} ({item.edgeBandingService.linearMeters.toFixed(2)}{language === 'uz' ? 'м' : 'м'})
+                                </span>
+                                <span className="font-medium">{item.edgeBandingService.total.toLocaleString()} UZS</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
+                          <span className="font-medium">{language === 'uz' ? 'Jami:' : 'Итого:'}</span>
+                          <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                            {calculateItemTotal(item).toLocaleString()} UZS
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
 
           {/* Checkout Summary */}
@@ -446,18 +764,39 @@ export const CartPage: React.FC = () => {
                     <span className="text-gray-600 dark:text-gray-400">{t('subtotal')}</span>
                     <span className="font-medium">{subtotal.toLocaleString()} UZS</span>
                   </div>
+                  
+                  <div className="flex items-center gap-2 mb-2">
+                    <Label className="flex-shrink-0">{t('discountType')}:</Label>
+                    <Select value={discountType} onValueChange={(value: 'p' | 'c') => setDiscountType(value)}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="c">{language === 'uz' ? 'UZS' : 'UZS'}</SelectItem>
+                        <SelectItem value="p">%</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
                   <div className="flex items-center gap-2">
                     <Label className="flex-shrink-0">{t('discount')}:</Label>
                     <Input
                       type="number"
                       min="0"
-                      max={subtotal}
+                      max={discountType === 'p' ? 100 : subtotal}
                       value={discount}
                       onChange={(e) => setDiscount(Number(e.target.value))}
                       className="flex-1"
                     />
                   </div>
+                  
+                  {discount > 0 && (
+                    <div className="text-sm text-gray-500 dark:text-gray-400 text-right">
+                      {language === 'uz' ? 'Chegirma' : 'Скидка'}: -{discountAmount.toLocaleString()} UZS
+                    </div>
+                  )}
                 </div>
+                
                 <Separator />
                 <div className="flex justify-between text-lg">
                   <span className="font-semibold">{t('total')}</span>
@@ -465,6 +804,7 @@ export const CartPage: React.FC = () => {
                     {total.toLocaleString()} UZS
                   </span>
                 </div>
+                
                 <div>
                   <Label>{t('paymentMethod')}</Label>
                   <Select value={paymentMethod} onValueChange={(value: any) => setPaymentMethod(value)}>
@@ -479,6 +819,7 @@ export const CartPage: React.FC = () => {
                     </SelectContent>
                   </Select>
                 </div>
+                
                 {paymentMethod === 'credit' && (
                   <div className="space-y-2">
                     <Label>{t('amountPaid')} (UZS)</Label>
@@ -493,8 +834,8 @@ export const CartPage: React.FC = () => {
                     />
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {language === 'uz' 
-                        ? `${t('remainingDebt')}: ${(total - amountPaid).toLocaleString()} UZS` 
-                        : `${t('remainingDebt')}: ${(total - amountPaid).toLocaleString()} UZS`}
+                        ? `Qolgan qarz: ${(total - amountPaid).toLocaleString()} UZS` 
+                        : `Остаток долга: ${(total - amountPaid).toLocaleString()} UZS`}
                     </p>
                   </div>
                 )}
@@ -502,18 +843,26 @@ export const CartPage: React.FC = () => {
               <CardFooter>
                 <Dialog open={isCheckoutDialogOpen} onOpenChange={setIsCheckoutDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button className="w-full" size="lg">
-                      <ReceiptIcon className="mr-2 h-5 w-5" />
+                    <Button 
+                      className="w-full" 
+                      size="lg" 
+                      disabled={displayCart.length === 0 || isLoading || isCreatingOrder}
+                    >
+                      {isLoading || isCreatingOrder ? (
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      ) : (
+                        <ReceiptIcon className="mr-2 h-5 w-5" />
+                      )}
                       {t('checkout')}
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>{language === 'uz' ? 'Sotuvni tasdiqlash' : 'Подтвердить продажу'}</DialogTitle>
+                      <DialogTitle>{language === 'uz' ? 'Buyurtmani tasdiqlash' : 'Подтвердить заказ'}</DialogTitle>
                       <DialogDescription>
                         {language === 'uz' 
-                          ? 'Sotuv ma\'lumotlarini tekshiring va tasdiqlang' 
-                          : 'Проверьте и подтвердите информацию о продаже'}
+                          ? 'Buyurtma ma\'lumotlarini tekshiring va tasdiqlang' 
+                          : 'Проверьте и подтвердите информацию о заказе'}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
@@ -525,7 +874,7 @@ export const CartPage: React.FC = () => {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="anonymous">
-                              {language === 'uz' ? 'Anonim mijoz (bir martalik)' : 'Анонимный клиент (разовый)'}
+                              {language === 'uz' ? 'Anonim mijoz' : 'Анонимный клиент'}
                             </SelectItem>
                             {customers.map((customer) => (
                               <SelectItem key={customer.id} value={customer.id}>
@@ -534,16 +883,11 @@ export const CartPage: React.FC = () => {
                             ))}
                           </SelectContent>
                         </Select>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          {language === 'uz' 
-                            ? 'Doimiy mijozlar uchun ismini tanlang' 
-                            : 'Выберите имя для постоянных клиентов'}
-                        </p>
                       </div>
                       <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-4 space-y-2">
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">{language === 'uz' ? 'Mahsulotlar' : 'Продукты'}</span>
-                          <span className="font-medium">{cart.length}</span>
+                          <span className="font-medium">{displayCart.length}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">{t('subtotal')}</span>
@@ -551,7 +895,7 @@ export const CartPage: React.FC = () => {
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">{t('discount')}</span>
-                          <span className="font-medium">-{discount.toLocaleString()} UZS</span>
+                          <span className="font-medium">-{discountAmount.toLocaleString()} UZS</span>
                         </div>
                         <Separator />
                         <div className="flex justify-between text-lg">
@@ -562,11 +906,12 @@ export const CartPage: React.FC = () => {
                       <Button 
                         className="w-full" 
                         size="lg"
-                        onClick={() => {
-                          handleCheckout();
-                          setIsCheckoutDialogOpen(false);
-                        }}
+                        onClick={handleCheckout}
+                        disabled={isLoading || isCreatingOrder}
                       >
+                        {isLoading || isCreatingOrder ? (
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        ) : null}
                         {language === 'uz' ? 'Tasdiqlash va yakunlash' : 'Подтвердить и завершить'}
                       </Button>
                     </div>
