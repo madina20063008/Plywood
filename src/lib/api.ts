@@ -17,7 +17,9 @@ import {
   CreateBandingData,
   ApiBanding,
   CreateThicknessData,
-  ApiThickness
+  ApiThickness,
+  ApiOrder,
+  CreateOrderData
 } from "./types";
 
 // api.ts
@@ -120,6 +122,15 @@ export const userApi = {
     return apiRequest<ApiUser[]>('/user/users/');
   },
 
+  // Get user statistics
+  getStats: (): Promise<{
+    total_users: number;
+    total_salers: number;
+    total_admins: number;
+  }> => {
+    return apiRequest('/user/stats/users/');
+  },
+
   // Create new user
   create: (data: CreateUserData): Promise<ApiUser> => {
     return apiRequest<ApiUser>('/user/users/', {
@@ -144,7 +155,7 @@ export const userApi = {
   },
 };
 
-// Customer API
+// Customer API - Updated with stats endpoint
 export const customerApi = {
   // Get all customers with optional search
   getAll: (search?: string): Promise<ApiCustomer[]> => {
@@ -152,6 +163,15 @@ export const customerApi = {
       ? `/customer/customer/?search=${encodeURIComponent(search)}`
       : '/customer/customer/';
     return apiRequest<ApiCustomer[]>(endpoint);
+  },
+
+  // Get customer statistics
+  getStats: (): Promise<{
+    total_customers: number;
+    debtor_customers: number;
+    total_debt: number;
+  }> => {
+    return apiRequest('/customer/stats/customers/');
   },
 
   // Create new customer
@@ -276,6 +296,21 @@ export const acceptanceApi = {
   },
 };
 
+// Notifications API - NEW
+export const notificationsApi = {
+  // Get low stock notifications
+  getLowStock: (): Promise<{
+    low_stock_products: number;
+    products: Array<{
+      id: number;
+      name: string;
+      count: number;
+    }>;
+  }> => {
+    return apiRequest('/utils/notifications/low-stock/');
+  },
+};
+
 // Basket API
 export const basketApi = {
   // Get basket items
@@ -319,11 +354,23 @@ export const basketApi = {
     });
   },
 
-  // Clear entire basket
-  clearBasket: (): Promise<void> => {
-    return apiRequest('/order/basket/', {
-      method: 'DELETE',
-    });
+  // Clear entire basket - change to POST with clear_all flag or remove all items individually
+  clearBasket: async (): Promise<void> => {
+    try {
+      // First, get current basket to get all item IDs
+      const basket = await basketApi.getBasket();
+      
+      if (basket && basket.items && basket.items.length > 0) {
+        // Remove each item individually
+        const removePromises = basket.items.map(item => 
+          basketApi.removeFromBasket(item.id)
+        );
+        await Promise.all(removePromises);
+      }
+    } catch (error) {
+      console.error('Failed to clear basket:', error);
+      throw error;
+    }
   },
 };
 

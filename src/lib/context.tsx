@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { 
   authApi, 
   customerApi, 
@@ -11,6 +11,7 @@ import {
   bandingApi,
   thicknessApi,
   orderApi,
+  notificationsApi,
 } from '../lib/api';
 import { 
   User, 
@@ -41,7 +42,8 @@ import {
   ApiThickness,
   CreateThicknessData,
   ApiOrder,
-  CreateOrderData
+  CreateOrderData,
+  LowStockNotification,
 } from '../lib/types';
 import { toast } from 'sonner';
 
@@ -62,6 +64,20 @@ interface AppContextType {
   acceptanceHistory: ApiAcceptanceHistory[];
   thicknesses: ApiThickness[];
   orders: ApiOrder[];
+  
+  // Customer stats
+  customerStats: {
+    total_customers: number;
+    debtor_customers: number;
+    total_debt: number;
+  };
+  isFetchingCustomerStats: boolean;
+  fetchCustomerStats: () => Promise<void>;
+  
+  // Notifications
+  lowStockNotifications: LowStockNotification | null;
+  isFetchingNotifications: boolean;
+  fetchLowStockNotifications: () => Promise<void>;
   
   // Auth functions
   login: (username: string, password: string) => Promise<boolean>;
@@ -91,9 +107,18 @@ interface AppContextType {
   
   // User API functions
   fetchUsers: () => Promise<void>;
+  fetchUserStats: () => Promise<void>;
   addUser: (userData: Omit<User, 'id' | 'createdAt'>) => Promise<void>;
   updateUser: (id: string, userData: Partial<Omit<User, 'id' | 'createdAt'>>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
+  
+  // User stats
+  userStats: {
+    total_users: number;
+    total_salers: number;
+    total_admins: number;
+  };
+  isFetchingUserStats: boolean;
   
   // Product API functions
   fetchProducts: (filters?: ProductFilters) => Promise<void>;
@@ -163,6 +188,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   
   // Separate loading states for user operations
   const [isFetchingUsers, setIsFetchingUsers] = useState(false);
+  const [isFetchingUserStats, setIsFetchingUserStats] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [isUpdatingUser, setIsUpdatingUser] = useState(false);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
@@ -189,6 +215,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isFetchingOrders, setIsFetchingOrders] = useState(false);
   
+  // Customer stats state
+  const [customerStats, setCustomerStats] = useState({
+    total_customers: 0,
+    debtor_customers: 0,
+    total_debt: 0
+  });
+  const [isFetchingCustomerStats, setIsFetchingCustomerStats] = useState(false);
+  
+  // Notifications state
+  const [lowStockNotifications, setLowStockNotifications] = useState<LowStockNotification | null>(null);
+  const [isFetchingNotifications, setIsFetchingNotifications] = useState(false);
+  
   const [language, setLanguage] = useState<'uz' | 'ru'>(() => {
     return (localStorage.getItem('language') as 'uz' | 'ru') || 'uz';
   });
@@ -199,6 +237,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // State
   const [users, setUsers] = useState<User[]>([]);
+  const [userStats, setUserStats] = useState({
+    total_users: 0,
+    total_salers: 0,
+    total_admins: 0
+  });
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [categories, setCategories] = useState<ApiCategory[]>([]);
@@ -209,6 +252,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [acceptanceHistory, setAcceptanceHistory] = useState<ApiAcceptanceHistory[]>([]);
   const [thicknesses, setThicknesses] = useState<ApiThickness[]>([]);
   const [orders, setOrders] = useState<ApiOrder[]>([]);
+
+  // Refs to track if data has been fetched
+  const hasFetchedCategories = useRef(false);
+  const hasFetchedProducts = useRef(false);
+  const hasFetchedCustomers = useRef(false);
+  const hasFetchedUsers = useRef(false);
+  const hasFetchedUserStats = useRef(false);
+  const hasFetchedAcceptanceHistory = useRef(false);
+  const hasFetchedBasket = useRef(false);
+  const hasFetchedThicknesses = useRef(false);
+  const hasFetchedOrders = useRef(false);
+  const hasFetchedCustomerStats = useRef(false);
+  const hasFetchedNotifications = useRef(false);
 
   // ============== Mapping Functions ==============
 
@@ -229,7 +285,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     return {
-      id: apiUser.id.toString(),
+      id: apiUser.id?.toString() || Date.now().toString(),
       username: apiUser.username || '',
       password: '',
       role: mapApiRole(apiUser.role),
@@ -263,15 +319,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
-  // Map API customer to app Customer type
+  // Map API customer to app Customer type - UPDATED with proper null checks
   const mapApiCustomerToCustomer = (apiCustomer: ApiCustomer): Customer => {
+    // Safely access all properties with fallbacks
     return {
-      id: apiCustomer.id.toString(),
-      name: apiCustomer.full_name,
-      phone: apiCustomer.phone_number,
-      address: apiCustomer.location,
-      email: apiCustomer.about,
-      notes: apiCustomer.description,
+      id: apiCustomer.id?.toString() || Date.now().toString(),
+      name: apiCustomer.full_name || '',
+      phone: apiCustomer.phone_number || '',
+      address: apiCustomer.location || '',
+      email: apiCustomer.about || '',
+      notes: apiCustomer.description || '',
+      debt: apiCustomer.debt ? parseFloat(apiCustomer.debt) : 0, // Parse debt from API
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -280,17 +338,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Map app Customer to API customer data
   const mapCustomerToApiData = (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): CreateCustomerData => {
     return {
-      full_name: customerData.name,
-      phone_number: customerData.phone,
+      full_name: customerData.name || '',
+      phone_number: customerData.phone || '',
       location: customerData.address || '',
       about: customerData.email || '',
       description: customerData.notes || '',
+      // Note: debt is not sent during creation/update as it's calculated from transactions
     };
   };
 
   // Map API product to app Product type
   const mapApiProductToProduct = (apiProduct: ApiProduct): Product => {
     const parseNumber = (value: string): number => {
+      if (!value) return 0;
       const num = parseFloat(value);
       return isNaN(num) ? 0 : num;
     };
@@ -310,7 +370,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       purchasePrice: parseNumber(apiProduct.arrival_price),
       unitPrice: parseNumber(apiProduct.sale_price),
       stockQuantity: apiProduct.count || 0,
-      enabled: true,
+      enabled: apiProduct.is_active,
       arrival_date: apiProduct.arrival_date,
       description: apiProduct.description || '',
       createdAt: new Date().toISOString(),
@@ -340,7 +400,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     return {
-      name: productData.name,
+      name: productData.name || '',
       color: productData.color || '#CCCCCC',
       quality: mapQuality(productData.quality),
       width: productData.width?.toString() || '0',
@@ -418,15 +478,64 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return product?.category || 'OTHER';
   };
 
+  // ============== Customer Stats Functions ==============
+
+  const fetchCustomerStats = useCallback(async () => {
+    if (!user) return;
+    
+    setIsFetchingCustomerStats(true);
+    try {
+      const stats = await customerApi.getStats();
+      setCustomerStats(stats);
+      hasFetchedCustomerStats.current = true;
+    } catch (error) {
+      console.error('Failed to fetch customer stats:', error);
+      toast.error(language === 'uz' 
+        ? 'Mijoz statistikasini yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке статистики клиентов');
+    } finally {
+      setIsFetchingCustomerStats(false);
+    }
+  }, [user, language]);
+
+  // ============== Notifications Functions ==============
+
+  const fetchLowStockNotifications = useCallback(async () => {
+    if (!user) return;
+    
+    setIsFetchingNotifications(true);
+    try {
+      const notifications = await notificationsApi.getLowStock();
+      setLowStockNotifications(notifications);
+      hasFetchedNotifications.current = true;
+      
+      // Show toast if there are low stock products
+      if (notifications.low_stock_products > 0) {
+        toast.warning(
+          language === 'uz' 
+            ? `${notifications.low_stock_products} ta mahsulot zaxirasi kam` 
+            : `${notifications.low_stock_products} товаров с низким запасом`,
+          {
+            duration: 5000,
+          }
+        );
+      }
+    } catch (error) {
+      console.error('Failed to fetch low stock notifications:', error);
+    } finally {
+      setIsFetchingNotifications(false);
+    }
+  }, [user, language]);
+
   // ============== Category API Functions ==============
 
-  const fetchCategories = async (search?: string) => {
+  const fetchCategories = useCallback(async (search?: string) => {
     if (!user) return;
     
     setIsFetchingCategories(true);
     try {
       const apiCategories = await categoryApi.getAll(search);
-      setCategories(apiCategories);
+      setCategories(apiCategories || []);
     } catch (error) {
       console.error('Failed to fetch categories:', error);
       toast.error(language === 'uz' 
@@ -435,17 +544,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsFetchingCategories(false);
     }
-  };
+  }, [user, language]);
 
   // ============== Thickness API Functions ==============
 
-  const fetchThicknesses = async () => {
+  const fetchThicknesses = useCallback(async () => {
     if (!user) return;
     
     setIsFetchingThicknesses(true);
     try {
       const apiThicknesses = await thicknessApi.getAll();
-      setThicknesses(apiThicknesses);
+      setThicknesses(apiThicknesses || []);
     } catch (error) {
       console.error('Failed to fetch thicknesses:', error);
       toast.error(language === 'uz' 
@@ -454,7 +563,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsFetchingThicknesses(false);
     }
-  };
+  }, [user, language]);
 
   const addThickness = async (data: CreateThicknessData) => {
     if (!user) return;
@@ -523,13 +632,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     if (!user) return;
 
     setIsFetchingOrders(true);
     try {
       const apiOrders = await orderApi.getAll();
-      setOrders(apiOrders);
+      setOrders(apiOrders || []);
     } catch (error) {
       console.error('Failed to fetch orders:', error);
       toast.error(language === 'uz' 
@@ -538,18 +647,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsFetchingOrders(false);
     }
-  };
+  }, [user, language]);
 
   // ============== Product API Functions ==============
 
-  const fetchProducts = async (filters?: ProductFilters) => {
+  const fetchProducts = useCallback(async (filters?: ProductFilters) => {
     if (!user) return;
     
     setIsFetchingProducts(true);
     try {
       const apiProducts = await productApi.getAll(filters);
-      const mappedProducts = apiProducts.map(mapApiProductToProduct);
+      const mappedProducts = (apiProducts || []).map(mapApiProductToProduct);
       setProducts(mappedProducts);
+      hasFetchedProducts.current = true;
     } catch (error) {
       console.error('Failed to fetch products:', error);
       toast.error(language === 'uz' 
@@ -558,7 +668,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsFetchingProducts(false);
     }
-  };
+  }, [user, language, categories]);
 
   const addProduct = async (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!user) {
@@ -658,14 +768,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ============== Customer API Functions ==============
 
-  const fetchCustomers = async (search?: string) => {
+  const fetchCustomers = useCallback(async (search?: string) => {
     if (!user) return;
     
     setIsFetchingCustomers(true);
     try {
       const apiCustomers = await customerApi.getAll(search);
-      const mappedCustomers = apiCustomers.map(mapApiCustomerToCustomer);
+      console.log('API Customers response:', apiCustomers); // Debug log
+      
+      // Ensure apiCustomers is an array before mapping
+      const customersArray = Array.isArray(apiCustomers) ? apiCustomers : [];
+      const mappedCustomers = customersArray.map(mapApiCustomerToCustomer);
       setCustomers(mappedCustomers);
+      hasFetchedCustomers.current = true;
     } catch (error) {
       console.error('Failed to fetch customers:', error);
       toast.error(language === 'uz' 
@@ -674,7 +789,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsFetchingCustomers(false);
     }
-  };
+  }, [user, language]);
 
   const addCustomer = async (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!user) {
@@ -715,6 +830,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (customerData.address) apiData.location = customerData.address;
       if (customerData.email) apiData.about = customerData.email;
       if (customerData.notes) apiData.description = customerData.notes;
+      // Note: debt is not updated directly via API, it's calculated from transactions
 
       const updatedApiCustomer = await customerApi.update(parseInt(id), apiData);
       const updatedCustomer = mapApiCustomerToCustomer(updatedApiCustomer);
@@ -756,14 +872,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ============== User API Functions ==============
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     if (!user) return;
     
     setIsFetchingUsers(true);
     try {
       const apiUsers = await userApi.getAll();
-      const mappedUsers = apiUsers.map(mapApiUserToUser);
+      const mappedUsers = (apiUsers || []).map(mapApiUserToUser);
       setUsers(mappedUsers);
+      hasFetchedUsers.current = true;
     } catch (error) {
       console.error('Failed to fetch users:', error);
       toast.error(language === 'uz' 
@@ -772,7 +889,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsFetchingUsers(false);
     }
-  };
+  }, [user, language]);
+
+  const fetchUserStats = useCallback(async () => {
+    if (!user) return;
+    
+    setIsFetchingUserStats(true);
+    try {
+      const stats = await userApi.getStats();
+      setUserStats(stats);
+      hasFetchedUserStats.current = true;
+    } catch (error) {
+      console.error('Failed to fetch user stats:', error);
+      toast.error(language === 'uz' 
+        ? 'Foydalanuvchi statistikasini yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке статистики пользователей');
+    } finally {
+      setIsFetchingUserStats(false);
+    }
+  }, [user, language]);
 
   const addUser = async (userData: Omit<User, 'id' | 'createdAt'>) => {
     if (!user) {
@@ -787,6 +922,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const newUser = mapApiUserToUser(newApiUser);
       
       setUsers(prev => [...prev, newUser]);
+      // Refresh stats after adding user
+      await fetchUserStats();
       toast.success(language === 'uz' ? 'Foydalanuvchi qo\'shildi' : 'Пользователь добавлен');
     } catch (error) {
       console.error('Failed to add user:', error);
@@ -836,6 +973,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         localStorage.setItem('user', JSON.stringify(updatedUser));
       }
       
+      // Refresh stats after updating user
+      await fetchUserStats();
+      
       toast.success(language === 'uz' ? 'Foydalanuvchi yangilandi' : 'Пользователь обновлен');
     } catch (error) {
       console.error('Failed to update user:', error);
@@ -865,6 +1005,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       await userApi.delete(parseInt(id));
       setUsers(prev => prev.filter(u => u.id !== id));
+      // Refresh stats after deleting user
+      await fetchUserStats();
       toast.success(language === 'uz' ? 'Foydalanuvchi o\'chirildi' : 'Пользователь удален');
     } catch (error) {
       console.error('Failed to delete user:', error);
@@ -879,7 +1021,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ============== Basket API Functions ==============
 
-  const fetchBasket = async () => {
+  const fetchBasket = useCallback(async () => {
     if (!user) return;
     
     setIsFetchingBasket(true);
@@ -887,7 +1029,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const apiBasket = await basketApi.getBasket();
       console.log('API Basket response:', apiBasket);
       
-      // Ensure we have valid data
       if (apiBasket && apiBasket.items) {
         const mappedCart = mapApiBasketToCart(apiBasket);
         setCart(mappedCart);
@@ -903,7 +1044,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsFetchingBasket(false);
     }
-  };
+  }, [user, language]);
 
   const addToCart = async (item: CartItem) => {
     if (!user) {
@@ -912,11 +1053,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     try {
-      // Add to API
       const productId = item.product.id;
       await basketApi.addToBasket(productId);
       
-      // Update local state
       setCart(prevCart => {
         const existingItem = prevCart.find(cartItem => cartItem.product.id === item.product.id);
         
@@ -926,13 +1065,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const newItem = {
             ...item,
             id: Date.now().toString(),
-            basketItemId: Date.now(), // This will be replaced when we fetch basket again
+            basketItemId: Date.now(),
           };
           return [...prevCart, newItem];
         }
       });
       
-      // Refresh basket to get correct IDs
       await fetchBasket();
     } catch (error) {
       console.error('Failed to add to basket:', error);
@@ -947,14 +1085,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!user) return;
 
     try {
-      // Find the item to get its API ID
       const item = cart.find(i => i.id === itemId);
       if (item?.basketItemId) {
-        // Remove from API
         await basketApi.removeFromBasket(item.basketItemId);
       }
       
-      // Update local state
       setCart(prevCart => prevCart.filter(item => item.id !== itemId));
       
       toast.success(language === 'uz' 
@@ -976,8 +1111,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     
     try {
-      // Since API doesn't support quantity updates directly,
-      // we update only local state
       setCart(prevCart =>
         prevCart.map(item =>
           item.id === itemId ? { ...item, quantity } : item
@@ -992,14 +1125,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const clearCart = async () => {
+  const clearCart = async (): Promise<void> => {
     if (!user) return;
 
     try {
-      // Clear API basket
+      // Try to clear via API first
       await basketApi.clearBasket();
       
-      // Clear local state
+      // Clear local state regardless of API result
       setCart([]);
       
       toast.success(language === 'uz' 
@@ -1007,10 +1140,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         : 'Корзина очищена');
     } catch (error) {
       console.error('Failed to clear basket:', error);
-      toast.error(language === 'uz' 
-        ? 'Savatchani tozalashda xatolik yuz berdi' 
-        : 'Ошибка при очистке корзины');
-      throw error;
+      
+      // Even if API fails, clear local cart
+      setCart([]);
+      
+      toast.warning(language === 'uz' 
+        ? 'Savatcha lokal tozalandi, lekin serverda xatolik yuz berdi' 
+        : 'Корзина очищена локально, но произошла ошибка на сервере');
+      
+      // Don't throw error to prevent blocking the order completion
     }
   };
 
@@ -1100,16 +1238,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ============== Acceptance API Functions ==============
 
-  const fetchAcceptanceHistory = async () => {
+  const fetchAcceptanceHistory = useCallback(async () => {
     if (!user) return;
     
     setIsFetchingAcceptanceHistory(true);
     try {
       const history = await acceptanceApi.getHistory();
-      setAcceptanceHistory(history);
+      setAcceptanceHistory(history || []);
       
       // Also update productArrivals state with API data
-      const mappedArrivals: ProductArrival[] = history.map(item => ({
+      const mappedArrivals: ProductArrival[] = (history || []).map(item => ({
         id: item.id.toString(),
         apiId: item.id,
         acceptanceId: item.acceptance,
@@ -1117,9 +1255,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         productName: item.product_name,
         category: getCategoryNameFromProductId(item.product.toString()) || 'OTHER',
         quantity: item.count,
-        purchasePrice: parseFloat(item.arrival_price),
-        sellingPrice: parseFloat(item.sale_price),
-        totalInvestment: parseFloat(item.arrival_price) * item.count,
+        purchasePrice: parseFloat(item.arrival_price) || 0,
+        sellingPrice: parseFloat(item.sale_price) || 0,
+        totalInvestment: (parseFloat(item.arrival_price) || 0) * item.count,
         arrivalDate: item.arrival_date,
         notes: item.description || '',
         receivedBy: user?.full_name || 'Unknown',
@@ -1135,7 +1273,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } finally {
       setIsFetchingAcceptanceHistory(false);
     }
-  };
+  }, [user, language, products]);
 
   const addProductArrival = async (arrival: Omit<ProductArrival, 'id' | 'createdAt' | 'apiId' | 'acceptanceId'>) => {
     if (!user) {
@@ -1194,6 +1332,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             : p
         )
       );
+      
+      // Refresh notifications after product arrival (stock increased)
+      fetchLowStockNotifications();
       
       toast.success(language === 'uz' 
         ? `${arrival.quantity} dona mahsulot qabul qilindi` 
@@ -1290,6 +1431,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setUser(mappedUser);
       localStorage.setItem('user', JSON.stringify(mappedUser));
       
+      // Reset fetch flags on login
+      hasFetchedCategories.current = false;
+      hasFetchedProducts.current = false;
+      hasFetchedCustomers.current = false;
+      hasFetchedUsers.current = false;
+      hasFetchedUserStats.current = false;
+      hasFetchedAcceptanceHistory.current = false;
+      hasFetchedBasket.current = false;
+      hasFetchedThicknesses.current = false;
+      hasFetchedOrders.current = false;
+      hasFetchedCustomerStats.current = false;
+      hasFetchedNotifications.current = false;
+      
       console.log('Login successful!');
       return true;
       
@@ -1329,6 +1483,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       
       setUser(null);
       setUsers([]);
+      setUserStats({
+        total_users: 0,
+        total_salers: 0,
+        total_admins: 0
+      });
       setCustomers([]);
       setProducts([]);
       setCategories([]);
@@ -1337,6 +1496,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setCart([]);
       setThicknesses([]);
       setOrders([]);
+      setCustomerStats({
+        total_customers: 0,
+        debtor_customers: 0,
+        total_debt: 0
+      });
+      setLowStockNotifications(null);
+      
+      // Reset fetch flags
+      hasFetchedCategories.current = false;
+      hasFetchedProducts.current = false;
+      hasFetchedCustomers.current = false;
+      hasFetchedUsers.current = false;
+      hasFetchedUserStats.current = false;
+      hasFetchedAcceptanceHistory.current = false;
+      hasFetchedBasket.current = false;
+      hasFetchedThicknesses.current = false;
+      hasFetchedOrders.current = false;
+      hasFetchedCustomerStats.current = false;
+      hasFetchedNotifications.current = false;
       
       console.log('6. Redirecting to login');
       window.location.href = '/login';
@@ -1349,23 +1527,56 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // ============== Effects ==============
 
-  // Fetch initial data when user is authenticated
+  // Fetch initial data when user is authenticated - only once
   useEffect(() => {
     if (user) {
-      fetchCategories();
-      fetchAcceptanceHistory();
-      fetchBasket();
-      fetchThicknesses();
-      fetchOrders();
+      if (!hasFetchedCategories.current) {
+        fetchCategories();
+        hasFetchedCategories.current = true;
+      }
+      if (!hasFetchedUserStats.current) {
+        fetchUserStats();
+        hasFetchedUserStats.current = true;
+      }
+      if (!hasFetchedAcceptanceHistory.current) {
+        fetchAcceptanceHistory();
+        hasFetchedAcceptanceHistory.current = true;
+      }
+      if (!hasFetchedBasket.current) {
+        fetchBasket();
+        hasFetchedBasket.current = true;
+      }
+      if (!hasFetchedThicknesses.current) {
+        fetchThicknesses();
+        hasFetchedThicknesses.current = true;
+      }
+      if (!hasFetchedOrders.current) {
+        fetchOrders();
+        hasFetchedOrders.current = true;
+      }
+      if (!hasFetchedCustomerStats.current) {
+        fetchCustomerStats();
+        hasFetchedCustomerStats.current = true;
+      }
+      if (!hasFetchedNotifications.current) {
+        fetchLowStockNotifications();
+        hasFetchedNotifications.current = true;
+      }
     }
   }, [user]);
 
-  // Fetch products after categories are loaded
+  // Fetch products, customers, users after categories are loaded - only once
   useEffect(() => {
     if (user && categories.length > 0) {
-      fetchProducts();
-      fetchCustomers();
-      fetchUsers();
+      if (!hasFetchedProducts.current) {
+        fetchProducts();
+      }
+      if (!hasFetchedCustomers.current) {
+        fetchCustomers();
+      }
+      if (!hasFetchedUsers.current) {
+        fetchUsers();
+      }
     }
   }, [user, categories]);
 
@@ -1397,6 +1608,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // State
     user,
     users,
+    userStats,
     isAuthenticated: !!user,
     isLoading,
     language,
@@ -1412,12 +1624,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     thicknesses,
     orders,
     
+    // Customer stats
+    customerStats,
+    isFetchingCustomerStats,
+    fetchCustomerStats,
+    
+    // Notifications
+    lowStockNotifications,
+    isFetchingNotifications,
+    fetchLowStockNotifications,
+    
     // Loading states
     isFetchingCustomers,
     isAddingCustomer,
     isUpdatingCustomer,
     isDeletingCustomer,
     isFetchingUsers,
+    isFetchingUserStats,
     isAddingUser,
     isUpdatingUser,
     isDeletingUser,
@@ -1460,6 +1683,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     
     // User API functions
     fetchUsers,
+    fetchUserStats,
     addUser,
     updateUser,
     deleteUser,

@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
+import { NotificationBell } from './NotificationBell';
 import { Button } from './ui/button';
 import { 
   LayoutDashboard, 
@@ -174,7 +175,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
           {/* User info */}
           <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name}</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.full_name || user?.username}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">{t(user?.role || '')}</p>
           </div>
 
@@ -244,6 +245,9 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           </Button>
 
           <div className="flex items-center gap-2 ml-auto">
+            {/* Notification Bell - Added here */}
+            <NotificationBell />
+            
             <Button
               variant="outline"
               size="icon"

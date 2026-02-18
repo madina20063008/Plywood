@@ -22,7 +22,9 @@ export const CustomersPage: React.FC = () => {
     language, 
     getCustomerBalance,
     isFetchingCustomers,
-    user
+    user,
+    customerStats,
+    isFetchingCustomerStats
   } = useApp();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -99,7 +101,7 @@ export const CustomersPage: React.FC = () => {
         notes: formData.notes || undefined,
       });
 
-      toast.success(t('customerAdded'));
+      toast.success(language === 'uz' ? 'Mijoz qo\'shildi' : 'Клиент добавлен');
       setIsAddDialogOpen(false);
       setFormData({ name: '', phone: '', address: '', email: '', notes: '' });
     } catch (error) {
@@ -127,7 +129,7 @@ export const CustomersPage: React.FC = () => {
         notes: formData.notes || undefined,
       });
 
-      toast.success(t('customerUpdated'));
+      toast.success(language === 'uz' ? 'Mijoz yangilandi' : 'Клиент обновлен');
       setIsEditDialogOpen(false);
       setSelectedCustomer(null);
     } catch (error) {
@@ -145,7 +147,7 @@ export const CustomersPage: React.FC = () => {
       setIsDeleting(customer.id);
       try {
         await deleteCustomer(customer.id);
-        toast.success(t('customerDeleted'));
+        toast.success(language === 'uz' ? 'Mijoz o\'chirildi' : 'Клиент удален');
       } catch (error) {
         // Error is already handled in context
       } finally {
@@ -198,85 +200,81 @@ export const CustomersPage: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {language === 'uz' ? 'Jami mijozlar' : 'Всего клиентов'}
-              </p>
-              <p className="text-2xl font-bold">{customers.length}</p>
+          {isFetchingCustomerStats ? (
+            <div className="flex justify-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {language === 'uz' ? 'Qarzdor mijozlar' : 'Клиенты с долгом'}
-              </p>
-              <p className="text-2xl font-bold">
-                {customers.filter(c => {
-                  const balance = getCustomerBalance(c.id);
-                  return balance.balance > 0;
-                }).length}
-              </p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {language === 'uz' ? 'Jami mijozlar' : 'Всего клиентов'}
+                </p>
+                <p className="text-2xl font-bold">{customerStats.total_customers}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {language === 'uz' ? 'Qarzdor mijozlar' : 'Клиенты с долгом'}
+                </p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {customerStats.debtor_customers}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {language === 'uz' ? 'Aktiv mijozlar' : 'Активные клиенты'}
+                </p>
+                <p className="text-2xl font-bold text-green-600">
+                  {customerStats.total_customers - customerStats.debtor_customers}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {language === 'uz' ? 'Umumiy qarz' : 'Общий долг'}
+                </p>
+                <p className="text-2xl font-bold text-red-600">
+                  {formatCurrency(customerStats.total_debt)} {language === 'uz' ? "so'm" : "сум"}
+                </p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {language === 'uz' ? 'Aktiv mijozlar' : 'Активные клиенты'}
-              </p>
-              <p className="text-2xl font-bold text-green-600">
-                {customers.filter(c => {
-                  const balance = getCustomerBalance(c.id);
-                  return balance.balance === 0;
-                }).length}
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {language === 'uz' ? 'Umumiy qarz' : 'Общий долг'}
-              </p>
-              <p className="text-2xl font-bold text-red-600">
-                {formatCurrency(customers.reduce((sum, c) => {
-                  const balance = getCustomerBalance(c.id);
-                  return sum + balance.balance;
-                }, 0))} {language === 'uz' ? "so'm" : "сум"}
-              </p>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Search */}
-      {/* Search */}
-<Card>
-  <CardHeader className="pb-2">
-    <CardTitle className="text-lg">{t('search')}</CardTitle>
-    <CardDescription>
-      {language === 'uz' 
-        ? 'Ism yoki telefon raqami bo\'yicha qidirish' 
-        : 'Поиск по имени или номеру телефона'}
-    </CardDescription>
-  </CardHeader>
-  <CardContent>
-    <div className="relative">
-      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-      <Input
-        type="search"
-        placeholder={language === 'uz' 
-          ? "Ism yoki telefon raqamini kiriting..." 
-          : "Введите имя или номер телефона..."}
-        value={searchTerm}
-        onChange={handleSearchChange}
-        className="pl-10"
-        disabled={isFetchingCustomers}
-      />
-      {searchTerm && (
-        <button
-          onClick={handleClearSearch}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-        >
-          ×
-        </button>
-      )}
-    </div>
-  </CardContent>
-</Card>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">{t('search')}</CardTitle>
+          <CardDescription>
+            {language === 'uz' 
+              ? 'Ism yoki telefon raqami bo\'yicha qidirish' 
+              : 'Поиск по имени или номеру телефона'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+            <Input
+              type="search"
+              placeholder={language === 'uz' 
+                ? "Ism yoki telefon raqamini kiriting..." 
+                : "Введите имя или номер телефона..."}
+              value={searchTerm}
+              onChange={handleSearchChange}
+              className="pl-10"
+              disabled={isFetchingCustomers}
+            />
+            {searchTerm && (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Customers Table */}
       <Card>
@@ -331,6 +329,8 @@ export const CustomersPage: React.FC = () => {
                 <TableBody>
                   {filteredCustomers.map((customer) => {
                     const balance = getCustomerBalance(customer.id);
+                    // Use API debt if available, otherwise use calculated balance
+                    const displayDebt = customer.debt !== undefined ? customer.debt : balance.balance;
                     const isDeletingThis = isDeleting === customer.id;
                     
                     return (
@@ -345,11 +345,11 @@ export const CustomersPage: React.FC = () => {
                         </TableCell>
                         <TableCell className="text-right">
                           <span className={
-                            balance.balance > 0 
+                            displayDebt > 0 
                               ? 'font-semibold text-red-600' 
                               : 'text-green-600'
                           }>
-                            {formatCurrency(balance.balance)} {language === 'uz' ? "so'm" : "сум"}
+                            {formatCurrency(displayDebt)} {language === 'uz' ? "so'm" : "сум"}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">

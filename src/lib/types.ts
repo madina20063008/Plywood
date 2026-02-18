@@ -23,10 +23,6 @@ export interface LoginResponse {
   refresh?: string;
   user?: ApiUser;
 }
-export interface LoginCredentials {
-  username: string;
-  password: string;
-}
 
 export interface ApiError {
   detail?: string;
@@ -52,13 +48,13 @@ export interface User {
   password: string;
   role: UserRole;
   full_name: string;
+  phone_number: string;
   createdAt: string;
-  phone_number: string
 }
 
 // Product types
 export interface Product {
-  id: string;
+  id: number;
   name: string;
   category: string;
   color: string;
@@ -84,16 +80,25 @@ export interface CuttingService {
   numberOfBoards: number;
   pricePerCut: number;
   total: number;
+  apiId?: number;
 }
 
 export interface EdgeBandingService {
   id: string;
   thickness: number;
+  thicknessId?: number;
   width: number;
   height: number;
   pricePerMeter: number;
   linearMeters: number;
   total: number;
+  apiId?: number;
+}
+
+export interface EdgeBandingPrice {
+  thickness: number;
+  label: string;
+  price: number;
 }
 
 // Cart item
@@ -118,19 +123,12 @@ export interface Sale {
   subtotal: number;
   discount: number;
   total: number;
-  paymentMethod: 'cash' | 'card' | 'mixed' | 'credit';
+  paymentMethod: 'cash' | 'card' | 'mixed' | 'nasiya';
   customerId?: string; // Optional customer ID for credit sales
   customerName?: string; // Optional customer name for credit sales
   amountPaid?: number; // Amount paid if partial payment
   amountDue?: number; // Outstanding amount for credit sales
   createdAt: string;
-}
-
-// Edge banding pricing
-export interface EdgeBandingPrice {
-  thickness: number;
-  label: string;
-  price: number;
 }
 
 // Analytics data
@@ -159,9 +157,12 @@ export interface ProductArrival {
   notes?: string;
   receivedBy: string; // Manager name
   createdAt: string;
+  // API fields
+  apiId?: number;
+  acceptanceId?: number;
 }
 
-// Customer Management
+// Customer Management - UPDATED with debt field
 export interface Customer {
   id: string;
   name: string;
@@ -169,6 +170,7 @@ export interface Customer {
   address?: string;
   email?: string;
   notes?: string;
+  debt?: number; // New debt field
   createdAt: string;
   updatedAt: string;
 }
@@ -187,12 +189,13 @@ export interface CustomerTransaction {
   createdAt: string;
 }
 
-// Customer API
+// Customer API - UPDATED with debt field
 export interface ApiCustomer {
   id: number;
   full_name: string;
   phone_number: string;
   location: string;
+  debt?: string; // New debt field (string from API)
   about: string;
   description: string;
 }
@@ -203,6 +206,7 @@ export interface CreateCustomerData {
   location: string;
   about: string;
   description: string;
+  // Note: debt is typically not set during creation, it accumulates from purchases
 }
 
 // User API types
@@ -224,9 +228,6 @@ export interface CreateUserData {
 
 export type UpdateUserData = Partial<CreateUserData>;
 
-// Add these to your existing types.ts file
-// Add these to your existing types.ts file
-
 // Category API types
 export interface ApiCategory {
   id: number;
@@ -247,6 +248,7 @@ export interface ApiProduct {
   count: number;
   arrival_date: string;
   description: string;
+  is_active: boolean;
   category: number;
 }
 
@@ -270,8 +272,6 @@ export interface ProductFilters {
   search?: string;
 }
 
-// Add these types to your existing types file
-
 // Acceptance (Product Receiving) API Types
 export interface ApiAcceptance {
   id: number;
@@ -281,6 +281,8 @@ export interface ApiAcceptance {
   count: number;
   arrival_date: string;
   description: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateAcceptanceData {
@@ -305,26 +307,7 @@ export interface ApiAcceptanceHistory {
   created_at: string;
 }
 
-// Update your existing ProductArrival type to match API
-export interface ProductArrival {
-  id: string;
-  productId: string;
-  productName: string;
-  category: string;
-  quantity: number;
-  purchasePrice: number;
-  sellingPrice: number;
-  totalInvestment: number;
-  arrivalDate: string;
-  notes: string;
-  receivedBy: string;
-  createdAt: string;
-  // API fields
-  apiId?: number;
-  acceptanceId?: number;
-}
-// Add to your types.ts file
-
+// Basket API types
 export interface ApiBasketItem {
   id: number;
   product: ApiProduct[];
@@ -340,237 +323,6 @@ export interface BasketItem {
   product: Product;
   quantity: number;
   basketItemId?: number; // API ID for the basket item
-}
-
-// types.ts
-
-export interface User {
-  id: string;
-  username: string;
-  password: string;
-  role: UserRole;
-  full_name: string;
-  phone_number: string;
-  createdAt: string;
-}
-
-export interface Product {
-  id: number;
-  name: string;
-  category: string;
-  color: string;
-  width: number;
-  height: number;
-  thickness: number;
-  quality: string;
-  purchasePrice: number;
-  unitPrice: number;
-  stockQuantity: number;
-  enabled: boolean;
-  arrival_date: string;
-  description: string;
-  imageUrl?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  address?: string;
-  email?: string;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface CartItem {
-  id: string;
-  product: Product;
-  quantity: number;
-  basketItemId?: number;
-  cuttingService?: CuttingService;
-  edgeBandingService?: EdgeBandingService;
-}
-
-export interface CuttingService {
-  id: string;
-  numberOfBoards: number;
-  pricePerCut: number;
-  total: number;
-  apiId?: number;
-}
-
-export interface EdgeBandingService {
-  id: string;
-  thickness: number;
-  thicknessId?: number;
-  width: number;
-  height: number;
-  pricePerMeter: number;
-  linearMeters: number;
-  total: number;
-  apiId?: number;
-}
-
-export interface EdgeBandingPrice {
-  thickness: number;
-  label: string;
-  price: number;
-}
-
-export interface Sale {
-  id: string;
-  salespersonId: string;
-  salespersonName: string;
-  customerId?: string;
-  customerName?: string;
-  items: CartItem[];
-  subtotal: number;
-  discount: number;
-  total: number;
-  paymentMethod: 'cash' | 'card' | 'mixed' | 'credit';
-  amountPaid?: number;
-  amountDue?: number;
-  createdAt: string;
-}
-
-export interface ProductArrival {
-  id: string;
-  apiId?: number;
-  acceptanceId?: number;
-  productId: string;
-  productName: string;
-  category: string;
-  quantity: number;
-  purchasePrice: number;
-  sellingPrice: number;
-  totalInvestment: number;
-  arrivalDate: string;
-  notes?: string;
-  receivedBy: string;
-  createdAt: string;
-}
-
-export interface CustomerTransaction {
-  id: string;
-  customerId: string;
-  type: 'purchase' | 'payment';
-  amount: number;
-  description?: string;
-  saleId?: string;
-  createdAt: string;
-}
-
-// API Types
-export interface ApiUser {
-  id: number;
-  username: string;
-  full_name: string;
-  phone_number: string;
-  role: 's' | 'a' | 'm';
-  is_active: boolean;
-}
-
-export interface CreateUserData {
-  full_name: string;
-  username: string;
-  phone_number: string;
-  password: string;
-  role: 's' | 'a' | 'm';
-}
-
-export interface ApiCustomer {
-  id: number;
-  full_name: string;
-  phone_number: string;
-  location: string;
-  about: string;
-  description: string;
-}
-
-export interface CreateCustomerData {
-  full_name: string;
-  phone_number: string;
-  location: string;
-  about: string;
-  description: string;
-}
-
-export interface ApiCategory {
-  id: number;
-  name: string;
-}
-
-export interface ApiProduct {
-  id: number;
-  name: string;
-  color: string;
-  quality: 'standard' | 'economic' | 'premium';
-  width: string;
-  height: string;
-  thick: string;
-  arrival_price: string;
-  sale_price: string;
-  count: number;
-  arrival_date: string;
-  description: string;
-  is_active: boolean;
-  category: number;
-}
-
-export interface CreateProductData {
-  name: string;
-  color: string;
-  quality: 'standard' | 'economic' | 'premium';
-  width: string;
-  height: string;
-  thick: string;
-  arrival_date: string;
-  description: string;
-  category: number;
-}
-
-
-export interface ProductFilters {
-  category?: number;
-  quality?: string;
-  search?: string;
-}
-
-export interface CreateAcceptanceData {
-  product: number;
-  arrival_price: string;
-  sale_price: string;
-  count: number;
-  arrival_date: string;
-  description: string;
-}
-
-export interface ApiAcceptance {
-  id: number;
-  product: number;
-  arrival_price: string;
-  sale_price: string;
-  count: number;
-  arrival_date: string;
-  description: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ApiAcceptanceHistory {
-  id: number;
-  acceptance: number;
-  product: number;
-  product_name: string;
-  arrival_price: string;
-  sale_price: string;
-  count: number;
-  arrival_date: string;
-  description: string;
-  created_at: string;
 }
 
 // Cutting Service API Types
@@ -615,8 +367,6 @@ export interface CreateBandingData {
   height: string;
 }
 
-// Add to your existing types.ts
-
 // Order API Types
 export interface ApiOrderItem {
   id: number;
@@ -645,13 +395,15 @@ export interface ApiOrder {
   user: number;
   discount_type: 'p' | 'c';
   discount: string;
-  payment_method: 'cash' | 'card' | 'mixed' | 'credit';
+  payment_method: 'cash' | 'card' | 'mixed' | 'nasiya';
   covered_amount: string;
   banding?: ApiOrderBanding;
   cutting?: ApiOrderCutting;
   total_price: string;
   items: ApiOrderItem[];
   created_at: string;
+  is_anonymous: string;
+  customer: any
 }
 
 export interface CreateOrderData {
@@ -659,7 +411,7 @@ export interface CreateOrderData {
     product_id: number;
     quantity: number;
   }>;
-  payment_method: 'cash' | 'card' | 'mixed' | 'credit';
+  payment_method: 'cash' | 'card' | 'mixed' | 'nasiya';
   discount: string;
   discount_type: 'p' | 'c';
   covered_amount: string;
@@ -676,4 +428,14 @@ export interface CreateOrderData {
 
 export interface Order extends ApiOrder {
   // Extended with mapped fields if needed
+}
+export interface LowStockProduct {
+  id: number;
+  name: string;
+  count: number;
+}
+
+export interface LowStockNotification {
+  low_stock_products: number;
+  products: LowStockProduct[];
 }
