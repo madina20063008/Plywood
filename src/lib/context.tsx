@@ -168,7 +168,7 @@ interface AppContextType {
   addCustomer: (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateCustomer: (id: string, customerData: Partial<Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   deleteCustomer: (id: string) => Promise<void>;
-  
+  getCustomerById: (id: number) => Promise<Customer | null>;
   // Loading states
   isFetchingCustomers: boolean;
   isAddingCustomer: boolean;
@@ -452,7 +452,20 @@ useEffect(() => {
       updatedAt: new Date().toISOString(),
     };
   };
-
+const getCustomerById = useCallback(async (id: number): Promise<Customer | null> => {
+  if (!user) return null;
+  
+  try {
+    const apiCustomer = await customerApi.getById(id);
+    return mapApiCustomerToCustomer(apiCustomer);
+  } catch (error) {
+    console.error('Failed to fetch customer by ID:', error);
+    toast.error(language === 'uz' 
+      ? 'Mijoz ma\'lumotlarini yuklashda xatolik' 
+      : 'Ошибка при загрузке данных клиента');
+    return null;
+  }
+}, [user, language]);
   // Map app Product to API product data
   const mapProductToApiData = (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): CreateProductData => {
     const category = categories.find(c => c.name === productData.category);
@@ -1823,6 +1836,7 @@ useEffect(() => {
     customerStats,
     isFetchingCustomerStats,
     fetchCustomerStats,
+    getCustomerById,
     
     // Debt stats
     debtStats,

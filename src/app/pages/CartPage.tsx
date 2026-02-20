@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
-import { CartItem, EdgeBandingPrice, CuttingService, EdgeBandingService, CreateOrderData, ApiOrder, Customer } from '../../lib/types';
+import { CartItem, CuttingService, EdgeBandingService, CreateOrderData, ApiOrder, Customer } from '../../lib/types';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -9,11 +9,11 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../compone
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Separator } from '../components/ui/separator';
-import { Trash2, Plus, Scissors, Ruler, ShoppingBag, Receipt as ReceiptIcon, Loader2, Minus, History, User, UserCheck, CreditCard, Banknote, Landmark } from 'lucide-react';
+import { Trash2, Plus, Scissors, Ruler, ShoppingBag, Receipt as ReceiptIcon, Loader2, Minus, History, User, UserCheck, CreditCard, Banknote, Landmark, Eye, Edit, XCircle, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
+import { orderApi, customerApi } from '../../lib/api';
 
 const CART_STORAGE_KEY = 'app_cart';
 
@@ -47,13 +47,18 @@ export const CartPage: React.FC = () => {
   } = useApp();
   
   const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<ApiOrder | null>(null);
   const [isCuttingDialogOpen, setIsCuttingDialogOpen] = useState(false);
   const [isEdgeBandingDialogOpen, setIsEdgeBandingDialogOpen] = useState(false);
   const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
+  const [isOrderDetailsDialogOpen, setIsOrderDetailsDialogOpen] = useState(false);
+  const [isEditOrderDialogOpen, setIsEditOrderDialogOpen] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<ApiOrder | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('anonymous');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDeletingOrder, setIsDeletingOrder] = useState<Record<number, boolean>>({});
+  const [isEditingOrder, setIsEditingOrder] = useState(false);
   const [removingItems, setRemovingItems] = useState<Record<string, boolean>>({});
   const [updatingQuantities, setUpdatingQuantities] = useState<Record<string, boolean>>({});
   const [isAddingService, setIsAddingService] = useState<Record<string, boolean>>({});
@@ -113,12 +118,45 @@ export const CartPage: React.FC = () => {
 
   // Update selected customer when ID changes
   useEffect(() => {
-    if (selectedCustomerId === 'anonymous') {
-      setSelectedCustomer(null);
-    } else {
-      const customer = customers.find(c => c.id === selectedCustomerId);
-      setSelectedCustomer(customer || null);
-    }
+    const fetchCustomerDetails = async () => {
+      if (selectedCustomerId === 'anonymous') {
+        setSelectedCustomer(null);
+      } else {
+        // First check if customer exists in the customers list from context
+        const existingCustomer = customers.find(c => c.id === selectedCustomerId);
+        
+        if (existingCustomer) {
+          setSelectedCustomer(existingCustomer);
+        } else {
+          // If not in context, fetch from API
+          try {
+            setIsLoading(true);
+            // Since we don't have a direct get by ID endpoint, we'll search by ID
+            // You might need to add a getById endpoint to your API
+            const allCustomers = await customerApi.getAll();
+            const foundCustomer = allCustomers.find(c => c.id === parseInt(selectedCustomerId));
+            
+            if (foundCustomer) {
+              // Convert ApiCustomer to Customer type
+              const customer: Customer = {
+                id: foundCustomer.id.toString(),
+                name: foundCustomer.full_name,
+                phone: foundCustomer.phone_number || '',
+                address: foundCustomer.address,
+                debt: foundCustomer.debt || 0
+              };
+              setSelectedCustomer(customer);
+            }
+          } catch (error) {
+            console.error('Failed to fetch customer details:', error);
+          } finally {
+            setIsLoading(false);
+          }
+        }
+      }
+    };
+
+    fetchCustomerDetails();
   }, [selectedCustomerId, customers]);
 
   // Use localCart for display, fallback to contextCart
@@ -363,6 +401,120 @@ export const CartPage: React.FC = () => {
     } finally {
       setIsLoading(false);
       setIsCheckoutDialogOpen(false);
+    }
+  };
+
+  const handleViewOrderDetails = async (orderId: number) => {
+    try {
+      setIsLoading(true);
+      const order = await orderApi.getById(orderId);
+      setSelectedOrder(order);
+      setIsOrderDetailsDialogOpen(true);
+    } catch (error: any) {
+      console.error('Failed to fetch order details:', error);
+      toast.error(language === 'uz' 
+        ? 'Buyurtma ma\'lumotlarini yuklashda xatolik' 
+        : 'Ошибка при загрузке информации о заказе');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEditOrder = (order: ApiOrder) => {
+  setSelectedOrder(order);
+  
+  // Set customer ID based on order data
+  if (order.is_anonymous) {
+    setSelectedCustomerId('anonymous');
+  } else if (order.customer) {
+    // Make sure we have a valid customer ID
+    const customerId = order.customer.id?.toString();
+    if (customerId) {
+      setSelectedCustomerId(customerId);
+    } else {
+      // If customer object exists but no ID, try to find by name or set to anonymous
+      console.warn('Customer object exists but no ID:', order.customer);
+      setSelectedCustomerId('anonymous');
+    }
+  } else {
+    // If order is not anonymous but no customer object, default to anonymous
+    console.warn('Order is not anonymous but no customer object:', order);
+    setSelectedCustomerId('anonymous');
+  }
+  
+  setPaymentMethod(order.payment_method as 'cash' | 'card' | 'mixed' | 'nasiya');
+  setDiscount(parseFloat(order.discount));
+  setDiscountInput(parseFloat(order.discount).toString());
+  setDiscountType(order.discount_type as 'p' | 'c');
+  setAmountPaid(parseFloat(order.covered_amount));
+  setAmountPaidInput(parseFloat(order.covered_amount).toString());
+  setIsEditOrderDialogOpen(true);
+};
+
+  const handleUpdateOrder = async () => {
+    if (!selectedOrder) return;
+
+    setIsEditingOrder(true);
+    try {
+      const items = selectedOrder.items.map(item => ({
+        product_id: item.product_id,
+        quantity: item.quantity,
+      }));
+
+      const updatedOrderData: Partial<CreateOrderData> = {
+        items,
+        payment_method: paymentMethod,
+        discount: discount.toString(),
+        discount_type: discountType,
+        covered_amount: amountPaid.toString(),
+        ...(selectedCustomerId !== 'anonymous' && { customer_id: parseInt(selectedCustomerId) }),
+      };
+
+      const updatedOrder = await orderApi.update(selectedOrder.id, updatedOrderData);
+      
+      // Refresh orders list
+      await fetchOrders();
+      
+      setIsEditOrderDialogOpen(false);
+      setSelectedOrder(null);
+      
+      toast.success(language === 'uz' 
+        ? 'Buyurtma muvaffaqiyatli yangilandi' 
+        : 'Заказ успешно обновлен');
+    } catch (error: any) {
+      console.error('Failed to update order:', error);
+      toast.error(language === 'uz' 
+        ? `Buyurtmani yangilashda xatolik: ${error.message}` 
+        : `Ошибка при обновлении заказа: ${error.message}`);
+    } finally {
+      setIsEditingOrder(false);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId: number) => {
+    if (!window.confirm(language === 'uz' 
+      ? 'Buyurtmani o\'chirishni istaysizmi?' 
+      : 'Вы уверены, что хотите удалить заказ?')) {
+      return;
+    }
+
+    setIsDeletingOrder(prev => ({ ...prev, [orderId]: true }));
+    try {
+      await orderApi.delete(orderId);
+      
+      // Refresh orders list
+      await fetchOrders();
+      
+      toast.success(language === 'uz' 
+        ? 'Buyurtma o\'chirildi' 
+        : 'Заказ удален');
+    } catch (error: any) {
+      console.error('Failed to delete order:', error);
+      toast.error(language === 'uz' 
+        ? `Buyurtmani o\'chirishda xatolik: ${error.message}` 
+        : `Ошибка при удалении заказа: ${error.message}`);
+    } finally {
+      setIsDeletingOrder(prev => ({ ...prev, [orderId]: false }));
     }
   };
 
@@ -681,16 +833,53 @@ export const CartPage: React.FC = () => {
                           </p>
                         </div>
                         
-                        <div className="text-left sm:text-right">
-                          <p className="text-xs text-gray-500">{t('total')}</p>
-                          <p className="text-base sm:text-xl font-bold text-blue-600 break-all">
-                            {parseFloat(order.total_price).toLocaleString()} UZS
-                          </p>
-                          {order.payment_method === 'nasiya' && (
-                            <p className="text-xs text-gray-500">
-                              {language === 'uz' ? 'To\'langan' : 'Оплачено'}: {parseFloat(order.covered_amount).toLocaleString()} UZS
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                          <div className="text-left sm:text-right">
+                            <p className="text-xs text-gray-500">{t('total')}</p>
+                            <p className="text-base sm:text-xl font-bold text-blue-600 break-all">
+                              {parseFloat(order.total_price).toLocaleString()} UZS
                             </p>
-                          )}
+                            {order.payment_method === 'nasiya' && (
+                              <p className="text-xs text-gray-500">
+                                {language === 'uz' ? 'To\'langan' : 'Оплачено'}: {parseFloat(order.covered_amount).toLocaleString()} UZS
+                              </p>
+                            )}
+                          </div>
+                          
+                          <div className="flex gap-1 mt-2 sm:mt-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-100"
+                              onClick={() => handleViewOrderDetails(order.id)}
+                              title={language === 'uz' ? 'Ko\'rish' : 'Просмотр'}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-100"
+                              onClick={() => handleEditOrder(order)}
+                              title={language === 'uz' ? 'Tahrirlash' : 'Редактировать'}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-100"
+                              onClick={() => handleDeleteOrder(order.id)}
+                              disabled={isDeletingOrder[order.id]}
+                              title={language === 'uz' ? 'O\'chirish' : 'Удалить'}
+                            >
+                              {isDeletingOrder[order.id] ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <XCircle className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                       
@@ -1254,6 +1443,11 @@ export const CartPage: React.FC = () => {
                           {selectedCustomer.address && (
                             <p className="text-xs text-gray-500 mt-1 break-all">{selectedCustomer.address}</p>
                           )}
+                          {selectedCustomer.debt !== undefined && selectedCustomer.debt > 0 && (
+                            <p className="text-xs text-yellow-600 font-medium mt-1">
+                              {language === 'uz' ? 'Qarz' : 'Долг'}: {selectedCustomer.debt.toLocaleString()} UZS
+                            </p>
+                          )}
                         </div>
                       )}
 
@@ -1316,6 +1510,246 @@ export const CartPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Order Details Dialog */}
+      <Dialog open={isOrderDetailsDialogOpen} onOpenChange={setIsOrderDetailsDialogOpen}>
+        <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <FileText className="h-5 w-5" />
+              {language === 'uz' ? 'Buyurtma tafsilotlari' : 'Детали заказа'} #{selectedOrder?.id}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedOrder && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">{language === 'uz' ? 'Sana' : 'Дата'}</p>
+                  <p className="font-medium">{formatDateTime(selectedOrder.created_at)}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">{t('paymentMethod')}</p>
+                  <p className="font-medium flex items-center gap-1">
+                    {getPaymentMethodIcon(selectedOrder.payment_method)}
+                    {getPaymentMethodLabel(selectedOrder.payment_method)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">{language === 'uz' ? 'Mijoz' : 'Клиент'}</p>
+                  <p className="font-medium">
+                    {selectedOrder.is_anonymous 
+                      ? (language === 'uz' ? 'Anonim' : 'Аноним')
+                      : selectedOrder.customer?.full_name
+                    }
+                  </p>
+                </div>
+                {selectedOrder.customer && (
+                  <div>
+                    <p className="text-sm text-gray-500">{language === 'uz' ? 'Telefon' : 'Телефон'}</p>
+                    <p className="font-medium">{selectedOrder.customer.phone_number}</p>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              <div>
+                <h3 className="font-medium mb-2">{language === 'uz' ? 'Mahsulotlar' : 'Товары'}</h3>
+                <div className="space-y-2">
+                  {selectedOrder.items.map((item, index) => (
+                    <div key={index} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                      <div>
+                        <p className="text-sm font-medium">ID: {item.product_id}</p>
+                        <p className="text-xs text-gray-500">{language === 'uz' ? 'Soni' : 'Количество'}: {item.quantity}</p>
+                      </div>
+                      <p className="font-semibold">{parseFloat(item.price).toLocaleString()} UZS</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">{t('subtotal')}</span>
+                  <span>{(parseFloat(selectedOrder.total_price) + parseFloat(selectedOrder.discount)).toLocaleString()} UZS</span>
+                </div>
+                {parseFloat(selectedOrder.discount) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">{t('discount')}</span>
+                    <span className="text-green-600">-{parseFloat(selectedOrder.discount).toLocaleString()} UZS</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-lg">
+                  <span>{t('total')}</span>
+                  <span className="text-blue-600">{parseFloat(selectedOrder.total_price).toLocaleString()} UZS</span>
+                </div>
+                
+                {selectedOrder.payment_method === 'nasiya' && (
+                  <>
+                    <div className="flex justify-between pt-2">
+                      <span className="text-gray-500">{language === 'uz' ? 'To\'langan' : 'Оплачено'}</span>
+                      <span>{parseFloat(selectedOrder.covered_amount).toLocaleString()} UZS</span>
+                    </div>
+                    <div className="flex justify-between font-medium text-yellow-600">
+                      <span>{language === 'uz' ? 'Qarz' : 'Долг'}</span>
+                      <span>{(parseFloat(selectedOrder.total_price) - parseFloat(selectedOrder.covered_amount)).toLocaleString()} UZS</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button onClick={() => setIsOrderDetailsDialogOpen(false)}>
+              {language === 'uz' ? 'Yopish' : 'Закрыть'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Order Dialog */}
+      <Dialog open={isEditOrderDialogOpen} onOpenChange={setIsEditOrderDialogOpen}>
+        <DialogContent className="w-[95vw] max-w-md mx-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              {language === 'uz' ? 'Buyurtmani tahrirlash' : 'Редактирование заказа'} #{selectedOrder?.id}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedOrder && (
+            <div className="space-y-4 py-4">
+              <div>
+                <Label className="text-sm">{language === 'uz' ? 'Mijoz' : 'Клиент'}</Label>
+                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder={language === 'uz' ? 'Mijozni tanlang' : 'Выберите клиента'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="anonymous">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        <span>{language === 'uz' ? 'Anonim mijoz' : 'Анонимный клиент'}</span>
+                      </div>
+                    </SelectItem>
+                    {customers.map((customer) => (
+                      <SelectItem key={customer.id} value={customer.id}>
+                        <div className="flex items-center gap-2">
+                          <UserCheck className="h-4 w-4" />
+                          <span className="truncate">{customer.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedCustomer && (
+                <div className="rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
+                  <p className="text-sm font-medium break-all">{selectedCustomer.name}</p>
+                  <p className="text-xs text-gray-500 break-all">{selectedCustomer.phone}</p>
+                  {selectedCustomer.address && (
+                    <p className="text-xs text-gray-500 mt-1 break-all">{selectedCustomer.address}</p>
+                  )}
+                  {selectedCustomer.debt !== undefined && selectedCustomer.debt > 0 && (
+                    <p className="text-xs text-yellow-600 font-medium mt-1">
+                      {language === 'uz' ? 'Qarz' : 'Долг'}: {selectedCustomer.debt.toLocaleString()} UZS
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <Label className="text-sm">{t('paymentMethod')}</Label>
+                <Select value={paymentMethod} onValueChange={(value: any) => setPaymentMethod(value)}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash" className="text-sm">{t('cash')}</SelectItem>
+                    <SelectItem value="card" className="text-sm">{t('card')}</SelectItem>
+                    <SelectItem value="mixed" className="text-sm">{t('mixed')}</SelectItem>
+                    <SelectItem value="nasiya" className="text-sm">{t('credit')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm">{t('discount')}</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={discountInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setDiscountInput(val);
+                      setDiscount(parseNumericInput(val));
+                    }}
+                    className="text-sm"
+                  />
+                  <Select value={discountType} onValueChange={(value: 'p' | 'c') => setDiscountType(value)}>
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="c">UZS</SelectItem>
+                      <SelectItem value="p">%</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {paymentMethod === 'nasiya' && (
+                <div className="space-y-2">
+                  <Label className="text-sm">{language === 'uz' ? 'To\'langan summa' : 'Оплаченная сумма'}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={amountPaidInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setAmountPaidInput(val);
+                      setAmountPaid(parseNumericInput(val));
+                    }}
+                    className="text-sm"
+                  />
+                </div>
+              )}
+
+              <Separator />
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">{t('total')}</span>
+                  <span className="font-bold">{total.toLocaleString()} UZS</span>
+                </div>
+                {paymentMethod === 'nasiya' && (
+                  <div className="flex justify-between text-sm text-yellow-600">
+                    <span>{language === 'uz' ? 'Qarz' : 'Долг'}</span>
+                    <span>{Math.max(0, total - amountPaid).toLocaleString()} UZS</span>
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button variant="outline" onClick={() => setIsEditOrderDialogOpen(false)} className="w-full sm:w-auto">
+                  {t('cancel')}
+                </Button>
+                <Button onClick={handleUpdateOrder} disabled={isEditingOrder} className="w-full sm:w-auto">
+                  {isEditingOrder ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  {language === 'uz' ? 'Saqlash' : 'Сохранить'}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

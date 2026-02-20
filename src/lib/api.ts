@@ -184,6 +184,11 @@ export const customerApi = {
     return apiRequest<ApiCustomer[]>(endpoint);
   },
 
+  // Get single customer by ID
+  getById: (id: number): Promise<ApiCustomer> => {
+    return apiRequest<ApiCustomer>(`/customer/customer/${id}/`);
+  },
+
   // Get customer statistics
   getStats: (): Promise<{
     total_customers: number;
@@ -524,8 +529,23 @@ export const orderApi = {
     return apiRequest('/order/order/');
   },
 
-  // Get single order
+  // Get single order by ID
   getById: (id: number): Promise<ApiOrder> => {
     return apiRequest(`/order/order/${id}/`);
+  },
+
+  // Update order
+  update: (id: number, data: Partial<CreateOrderData>): Promise<ApiOrder> => {
+    return apiRequest(`/order/order/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete order
+  delete: (id: number): Promise<void> => {
+    return apiRequest(`/order/order/${id}/`, {
+      method: 'DELETE',
+    });
   },
 };
