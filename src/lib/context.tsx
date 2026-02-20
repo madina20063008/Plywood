@@ -12,6 +12,8 @@ import {
   thicknessApi,
   orderApi,
   notificationsApi,
+  dashboardApi,
+  orderStatsApi,
 } from '../lib/api';
 import { 
   User, 
@@ -44,6 +46,9 @@ import {
   ApiOrder,
   CreateOrderData,
   LowStockNotification,
+  DashboardStats,
+  OrderStats,
+  DebtStats,
 } from '../lib/types';
 import { toast } from 'sonner';
 
@@ -73,6 +78,21 @@ interface AppContextType {
   };
   isFetchingCustomerStats: boolean;
   fetchCustomerStats: () => Promise<void>;
+  
+  // Debt stats (for financial page)
+  debtStats: DebtStats | null;
+  isFetchingDebtStats: boolean;
+  fetchDebtStats: () => Promise<void>;
+  
+  // Dashboard stats
+  dashboardStats: DashboardStats | null;
+  isFetchingDashboardStats: boolean;
+  fetchDashboardStats: () => Promise<void>;
+  
+  // Order stats (for sold products page)
+  orderStats: OrderStats | null;
+  isFetchingOrderStats: boolean;
+  fetchOrderStats: () => Promise<void>;
   
   // Notifications
   lowStockNotifications: LowStockNotification | null;
@@ -223,6 +243,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   });
   const [isFetchingCustomerStats, setIsFetchingCustomerStats] = useState(false);
   
+  // Debt stats state (for financial page)
+  const [debtStats, setDebtStats] = useState<DebtStats | null>(null);
+  const [isFetchingDebtStats, setIsFetchingDebtStats] = useState(false);
+  
+  // Dashboard stats state
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
+  const [isFetchingDashboardStats, setIsFetchingDashboardStats] = useState(false);
+  
+  // Order stats state (for sold products page)
+  const [orderStats, setOrderStats] = useState<OrderStats | null>(null);
+  const [isFetchingOrderStats, setIsFetchingOrderStats] = useState(false);
+  
   // Notifications state
   const [lowStockNotifications, setLowStockNotifications] = useState<LowStockNotification | null>(null);
   const [isFetchingNotifications, setIsFetchingNotifications] = useState(false);
@@ -264,10 +296,53 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const hasFetchedThicknesses = useRef(false);
   const hasFetchedOrders = useRef(false);
   const hasFetchedCustomerStats = useRef(false);
+  const hasFetchedDebtStats = useRef(false);
+  const hasFetchedDashboardStats = useRef(false);
+  const hasFetchedOrderStats = useRef(false);
   const hasFetchedNotifications = useRef(false);
 
   // ============== Mapping Functions ==============
+// In your AppProvider component, add this function and useEffect
 
+// Add this function to check token validity
+const checkTokenValidity = useCallback(async () => {
+  const token = localStorage.getItem('accessToken');
+  if (!token) return;
+
+  try {
+    // Try to fetch current user to check if token is still valid
+    await authApi.getCurrentUser();
+  } catch (error) {
+    console.error('Token validation failed:', error);
+    
+    // Token is invalid, logout
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+    setUser(null);
+    
+    const toastMessage = language === 'uz' 
+      ? 'Sessiya muddati tugadi. Iltimos, qaytadan kiring.'
+      : 'Сессия истекла. Пожалуйста, войдите снова.';
+    
+    toast.error(toastMessage);
+    
+    window.location.href = '/login';
+  }
+}, [language]);
+
+// Add this useEffect to check token on app load and periodically
+useEffect(() => {
+  if (user) {
+    // Check token validity on initial load
+    checkTokenValidity();
+    
+    // Set up periodic token check (every 5 minutes)
+    const intervalId = setInterval(checkTokenValidity, 5 * 60 * 1000);
+    
+    return () => clearInterval(intervalId);
+  }
+}, [user, checkTokenValidity]);
   // Map API user to app User type
   const mapApiUserToUser = (apiUser: ApiUser): User => {
     const mapApiRole = (role: string): UserRole => {
@@ -498,6 +573,66 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [user, language]);
 
+  // ============== Debt Stats Functions ==============
+
+  const fetchDebtStats = useCallback(async () => {
+    if (!user) return;
+    
+    setIsFetchingDebtStats(true);
+    try {
+      const stats = await customerApi.getDebtStats();
+      setDebtStats(stats);
+      hasFetchedDebtStats.current = true;
+    } catch (error) {
+      console.error('Failed to fetch debt stats:', error);
+      toast.error(language === 'uz' 
+        ? 'Qarz statistikasini yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке статистики долгов');
+    } finally {
+      setIsFetchingDebtStats(false);
+    }
+  }, [user, language]);
+
+  // ============== Dashboard Stats Functions ==============
+
+  const fetchDashboardStats = useCallback(async () => {
+    if (!user) return;
+    
+    setIsFetchingDashboardStats(true);
+    try {
+      const stats = await dashboardApi.getStats();
+      setDashboardStats(stats);
+      hasFetchedDashboardStats.current = true;
+    } catch (error) {
+      console.error('Failed to fetch dashboard stats:', error);
+      toast.error(language === 'uz' 
+        ? 'Dashboard statistikasini yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке статистики дашборда');
+    } finally {
+      setIsFetchingDashboardStats(false);
+    }
+  }, [user, language]);
+
+  // ============== Order Stats Functions ==============
+
+  const fetchOrderStats = useCallback(async () => {
+    if (!user) return;
+    
+    setIsFetchingOrderStats(true);
+    try {
+      const stats = await orderStatsApi.getStats();
+      setOrderStats(stats);
+      hasFetchedOrderStats.current = true;
+    } catch (error) {
+      console.error('Failed to fetch order stats:', error);
+      toast.error(language === 'uz' 
+        ? 'Buyurtma statistikasini yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке статистики заказов');
+    } finally {
+      setIsFetchingOrderStats(false);
+    }
+  }, [user, language]);
+
   // ============== Notifications Functions ==============
 
   const fetchLowStockNotifications = useCallback(async () => {
@@ -617,6 +752,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Clear cart after successful order
       await clearCart();
       
+      // Refresh all stats after new order
+      fetchDashboardStats();
+      fetchOrderStats();
+      fetchDebtStats();
+      fetchLowStockNotifications();
+      
       toast.success(language === 'uz' 
         ? 'Buyurtma muvaffaqiyatli yaratildi' 
         : 'Заказ успешно создан');
@@ -683,6 +824,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const newProduct = mapApiProductToProduct(newApiProduct);
       
       setProducts(prev => [...prev, newProduct]);
+      
+      // Refresh notifications after adding product
+      fetchLowStockNotifications();
+      // Refresh dashboard stats
+      fetchDashboardStats();
+      
       toast.success(language === 'uz' ? 'Mahsulot qo\'shildi' : 'Продукт добавлен');
     } catch (error) {
       console.error('Failed to add product:', error);
@@ -732,6 +879,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const updatedProduct = mapApiProductToProduct(updatedApiProduct);
       
       setProducts(prev => prev.map(p => p.id.toString() === id ? updatedProduct : p));
+      
+      // Refresh notifications after updating product
+      fetchLowStockNotifications();
+      
       toast.success(language === 'uz' ? 'Mahsulot yangilandi' : 'Продукт обновлен');
     } catch (error) {
       console.error('Failed to update product:', error);
@@ -754,6 +905,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       await productApi.delete(parseInt(id));
       setProducts(prev => prev.filter(p => p.id.toString() !== id));
+      
+      // Refresh notifications after deleting product
+      fetchLowStockNotifications();
+      // Refresh dashboard stats
+      fetchDashboardStats();
+      
       toast.success(language === 'uz' ? 'Mahsulot o\'chirildi' : 'Продукт удален');
     } catch (error) {
       console.error('Failed to delete product:', error);
@@ -804,6 +961,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const newCustomer = mapApiCustomerToCustomer(newApiCustomer);
       
       setCustomers(prev => [...prev, newCustomer]);
+      
+      // Refresh customer stats
+      fetchCustomerStats();
+      fetchDebtStats();
+      
       toast.success(language === 'uz' ? 'Mijoz qo\'shildi' : 'Клиент добавлен');
     } catch (error) {
       console.error('Failed to add customer:', error);
@@ -836,6 +998,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const updatedCustomer = mapApiCustomerToCustomer(updatedApiCustomer);
       
       setCustomers(prev => prev.map(c => c.id === id ? updatedCustomer : c));
+      
+      // Refresh customer stats
+      fetchCustomerStats();
+      fetchDebtStats();
+      
       toast.success(language === 'uz' ? 'Mijoz yangilandi' : 'Клиент обновлен');
     } catch (error) {
       console.error('Failed to update customer:', error);
@@ -858,6 +1025,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       await customerApi.delete(parseInt(id));
       setCustomers(prev => prev.filter(c => c.id !== id));
+      
+      // Refresh customer stats
+      fetchCustomerStats();
+      fetchDebtStats();
+      
       toast.success(language === 'uz' ? 'Mijoz o\'chirildi' : 'Клиент удален');
     } catch (error) {
       console.error('Failed to delete customer:', error);
@@ -1335,6 +1507,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       
       // Refresh notifications after product arrival (stock increased)
       fetchLowStockNotifications();
+      // Refresh dashboard stats
+      fetchDashboardStats();
       
       toast.success(language === 'uz' 
         ? `${arrival.quantity} dona mahsulot qabul qilindi` 
@@ -1442,6 +1616,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       hasFetchedThicknesses.current = false;
       hasFetchedOrders.current = false;
       hasFetchedCustomerStats.current = false;
+      hasFetchedDebtStats.current = false;
+      hasFetchedDashboardStats.current = false;
+      hasFetchedOrderStats.current = false;
       hasFetchedNotifications.current = false;
       
       console.log('Login successful!');
@@ -1501,6 +1678,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         debtor_customers: 0,
         total_debt: 0
       });
+      setDebtStats(null);
+      setDashboardStats(null);
+      setOrderStats(null);
       setLowStockNotifications(null);
       
       // Reset fetch flags
@@ -1514,6 +1694,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       hasFetchedThicknesses.current = false;
       hasFetchedOrders.current = false;
       hasFetchedCustomerStats.current = false;
+      hasFetchedDebtStats.current = false;
+      hasFetchedDashboardStats.current = false;
+      hasFetchedOrderStats.current = false;
       hasFetchedNotifications.current = false;
       
       console.log('6. Redirecting to login');
@@ -1557,6 +1740,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (!hasFetchedCustomerStats.current) {
         fetchCustomerStats();
         hasFetchedCustomerStats.current = true;
+      }
+      if (!hasFetchedDebtStats.current) {
+        fetchDebtStats();
+        hasFetchedDebtStats.current = true;
+      }
+      if (!hasFetchedDashboardStats.current) {
+        fetchDashboardStats();
+        hasFetchedDashboardStats.current = true;
+      }
+      if (!hasFetchedOrderStats.current) {
+        fetchOrderStats();
+        hasFetchedOrderStats.current = true;
       }
       if (!hasFetchedNotifications.current) {
         fetchLowStockNotifications();
@@ -1628,6 +1823,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     customerStats,
     isFetchingCustomerStats,
     fetchCustomerStats,
+    
+    // Debt stats
+    debtStats,
+    isFetchingDebtStats,
+    fetchDebtStats,
+    
+    // Dashboard stats
+    dashboardStats,
+    isFetchingDashboardStats,
+    fetchDashboardStats,
+    
+    // Order stats
+    orderStats,
+    isFetchingOrderStats,
+    fetchOrderStats,
     
     // Notifications
     lowStockNotifications,

@@ -21,7 +21,8 @@ import {
   UserPlus,
   Wallet,
   PlusCircle,
-  PackageCheck
+  PackageCheck,
+  BriefcaseBusiness
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { useState } from 'react';
@@ -46,6 +47,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       name: t('products'), 
       path: '/products', 
       icon: Package,
+      roles: ['salesperson', 'admin', 'manager']
+    },
+    { 
+      name: t('services'), 
+      path: '/services', 
+      icon: BriefcaseBusiness,
       roles: ['salesperson', 'admin', 'manager']
     },
     { 

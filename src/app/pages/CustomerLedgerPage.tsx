@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
 import { Customer } from '../../lib/types';
@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
-import { DollarSign, TrendingUp, TrendingDown, Calendar, User, CreditCard, Eye } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Calendar, User, CreditCard, Eye, Users, ShoppingBag } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const CustomerLedgerPage: React.FC = () => {
@@ -19,13 +19,21 @@ export const CustomerLedgerPage: React.FC = () => {
     addCustomerTransaction, 
     getCustomerBalance, 
     currentUser,
-    language 
+    language,
+    debtStats,
+    fetchDebtStats,
+    isFetchingDebtStats
   } = useApp();
   
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDescription, setPaymentDescription] = useState('');
+
+  // Fetch debt stats on component mount
+  useEffect(() => {
+    fetchDebtStats();
+  }, []);
 
   const t = (key: string) => getTranslation(language, key as any);
 
@@ -69,8 +77,11 @@ export const CustomerLedgerPage: React.FC = () => {
       type: 'payment',
       amount: amount,
       description: paymentDescription || undefined,
-      processedBy: currentUser?.name || '',
+      processedBy: currentUser?.full_name || currentUser?.username || '',
     });
+
+    // Refresh debt stats after adding payment
+    fetchDebtStats();
 
     toast.success(t('paymentAdded'));
     setIsPaymentDialogOpen(false);
@@ -83,17 +94,6 @@ export const CustomerLedgerPage: React.FC = () => {
       .filter(t => t.customerId === customerId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   };
-
-  // Calculate overall statistics
-  const totalDebt = customers.reduce((sum, c) => {
-    const balance = getCustomerBalance(c.id);
-    return sum + balance.balance;
-  }, 0);
-
-  const customersWithDebt = customers.filter(c => {
-    const balance = getCustomerBalance(c.id);
-    return balance.balance > 0;
-  });
 
   return (
     <div className="space-y-6">
@@ -109,7 +109,7 @@ export const CustomerLedgerPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Statistics Cards */}
+      {/* Statistics Cards - Using debtStats from API */}
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -117,12 +117,18 @@ export const CustomerLedgerPage: React.FC = () => {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {formatCurrency(totalDebt)} {language === 'uz' ? 'so\'m' : 'сум'}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {language === 'uz' ? 'Umumiy qarz' : 'Общая задолженность'}
-            </p>
+            {isFetchingDebtStats ? (
+              <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-red-600">
+                  {formatCurrency(debtStats?.total_debt || 0)} {language === 'uz' ? "so'm" : "сум"}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'uz' ? 'Umumiy qarz' : 'Общая задолженность'}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -131,28 +137,38 @@ export const CustomerLedgerPage: React.FC = () => {
             <CardTitle className="text-sm font-medium">
               {language === 'uz' ? 'Qarzdor mijozlar' : 'Клиенты с долгом'}
             </CardTitle>
-            <User className="h-4 w-4 text-muted-foreground" />
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{customersWithDebt.length}</div>
-            <p className="text-xs text-muted-foreground">
-              {language === 'uz' ? `${customers.length} mijozdan` : `Из ${customers.length} клиентов`}
-            </p>
+            {isFetchingDebtStats ? (
+              <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{debtStats?.debtor_customers || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'uz' ? `${customers.length} mijozdan` : `Из ${customers.length} клиентов`}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{t('creditSales')}</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <ShoppingBag className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {customerTransactions.filter(t => t.type === 'purchase').length}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {language === 'uz' ? 'Nasiya sotuvlar soni' : 'Количество кредитных продаж'}
-            </p>
+            {isFetchingDebtStats ? (
+              <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{debtStats?.nasiya_sales || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'uz' ? 'Nasiya sotuvlar soni' : 'Количество кредитных продаж'}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -201,7 +217,7 @@ export const CustomerLedgerPage: React.FC = () => {
                         </div>
                         <div className="text-right">
                           <p className={`font-semibold ${balance.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            {formatCurrency(balance.balance)} {language === 'uz' ? 'so\'m' : 'сум'}
+                            {formatCurrency(balance.balance)} {language === 'uz' ? "so'm" : "сум"}
                           </p>
                           <p className="text-xs text-gray-500">
                             {balance.balance > 0 ? t('outstandingDebt') : (language === 'uz' ? 'Qarz yo\'q' : 'Нет долга')}
@@ -242,21 +258,21 @@ export const CustomerLedgerPage: React.FC = () => {
                 {/* Financial Summary */}
                 <div className="grid gap-4 sm:grid-cols-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{t('totalDebt')}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{t('totalPurchases')}</p>
                     <p className="text-xl font-bold text-red-600">
-                      {formatCurrency(getCustomerBalance(selectedCustomer.id).totalPurchases)}
+                      {formatCurrency(getCustomerBalance(selectedCustomer.id).totalPurchases)} {language === 'uz' ? "so'm" : "сум"}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">{t('totalPaid')}</p>
                     <p className="text-xl font-bold text-green-600">
-                      {formatCurrency(getCustomerBalance(selectedCustomer.id).totalPayments)}
+                      {formatCurrency(getCustomerBalance(selectedCustomer.id).totalPayments)} {language === 'uz' ? "so'm" : "сум"}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">{t('outstandingDebt')}</p>
                     <p className="text-xl font-bold text-blue-600">
-                      {formatCurrency(getCustomerBalance(selectedCustomer.id).balance)}
+                      {formatCurrency(getCustomerBalance(selectedCustomer.id).balance)} {language === 'uz' ? "so'm" : "сум"}
                     </p>
                   </div>
                 </div>
@@ -313,7 +329,7 @@ export const CustomerLedgerPage: React.FC = () => {
                               transaction.type === 'purchase' ? 'text-red-600' : 'text-green-600'
                             }`}>
                               {transaction.type === 'purchase' ? '+' : '-'}
-                              {formatCurrency(transaction.amount)} {language === 'uz' ? 'so\'m' : 'сум'}
+                              {formatCurrency(transaction.amount)} {language === 'uz' ? "so'm" : "сум"}
                             </p>
                           </div>
                         </div>
@@ -348,7 +364,7 @@ export const CustomerLedgerPage: React.FC = () => {
                   {t('outstandingDebt')}:
                 </p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {formatCurrency(getCustomerBalance(selectedCustomer.id).balance)} {language === 'uz' ? 'so\'m' : 'сум'}
+                  {formatCurrency(getCustomerBalance(selectedCustomer.id).balance)} {language === 'uz' ? "so'm" : "сум"}
                 </p>
               </div>
 

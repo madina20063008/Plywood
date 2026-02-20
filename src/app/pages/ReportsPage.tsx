@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -6,12 +6,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { FileText, Download } from 'lucide-react';
+import { FileText, Download, TrendingUp, Percent, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 
 export const ReportsPage: React.FC = () => {
-  const { sales, language } = useApp();
+  const { 
+    sales, 
+    language,
+    dashboardStats,
+    fetchDashboardStats,
+    isFetchingDashboardStats
+  } = useApp();
   const [selectedPeriod, setSelectedPeriod] = useState('all');
+
+  // Fetch dashboard stats on component mount
+  useEffect(() => {
+    fetchDashboardStats();
+  }, []);
 
   const t = (key: string) => getTranslation(language, key as any);
 
@@ -57,35 +68,78 @@ export const ReportsPage: React.FC = () => {
         </Button>
       </div>
 
+      {/* Statistics Cards - Using dashboardStats from API */}
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{language === 'uz' ? 'Jami sotuvlar' : 'Всего продаж'}</p>
-              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{filteredSales.length}</p>
-            </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              {language === 'uz' ? 'Jami sotuvlar' : 'Всего продаж'}
+            </CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isFetchingDashboardStats ? (
+              <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {dashboardStats?.total_sales || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {selectedPeriod === 'today' ? (language === 'uz' ? 'Bugungi' : 'Сегодня') :
+                   selectedPeriod === 'week' ? (language === 'uz' ? '7 kunlik' : 'За 7 дней') :
+                   selectedPeriod === 'month' ? (language === 'uz' ? '30 kunlik' : 'За 30 дней') :
+                   (language === 'uz' ? 'Barcha vaqt' : 'За все время')}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
+
         <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{language === 'uz' ? 'Jami daromad' : 'Общая выручка'}</p>
-              <p className="text-3xl font-bold text-green-600 dark:text-green-400">{totals.totalRevenue.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">UZS</p>
-            </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              {language === 'uz' ? 'Jami daromad' : 'Общая выручка'}
+            </CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isFetchingDashboardStats ? (
+              <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  {dashboardStats?.total_income?.toLocaleString() || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">UZS</p>
+              </>
+            )}
           </CardContent>
         </Card>
+
         <Card>
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{language === 'uz' ? 'Jami chegirma' : 'Общие скидки'}</p>
-              <p className="text-3xl font-bold text-orange-600 dark:text-orange-400">{totals.totalDiscount.toLocaleString()}</p>
-              <p className="text-xs text-gray-500">UZS</p>
-            </div>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              {language === 'uz' ? 'Jami chegirma' : 'Общие скидки'}
+            </CardTitle>
+            <Percent className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isFetchingDashboardStats ? (
+              <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                  {dashboardStats?.total_discount?.toLocaleString() || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">UZS</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
 
+      {/* Period Filter and Sales Table */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -131,13 +185,19 @@ export const ReportsPage: React.FC = () => {
                       <TableCell>{format(new Date(sale.createdAt), 'dd.MM.yyyy HH:mm')}</TableCell>
                       <TableCell>{sale.salespersonName}</TableCell>
                       <TableCell>
-                        <Badge>{sale.items.length} {language === 'uz' ? 'dona' : 'шт'}</Badge>
+                        <Badge variant="secondary">
+                          {sale.items.length} {language === 'uz' ? 'dona' : 'шт'}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant="outline">{t(sale.paymentMethod)}</Badge>
                       </TableCell>
-                      <TableCell>{sale.discount.toLocaleString()} UZS</TableCell>
-                      <TableCell className="text-right font-semibold">{sale.total.toLocaleString()} UZS</TableCell>
+                      <TableCell className="text-orange-600 dark:text-orange-400">
+                        {sale.discount.toLocaleString()} UZS
+                      </TableCell>
+                      <TableCell className="text-right font-semibold text-green-600 dark:text-green-400">
+                        {sale.total.toLocaleString()} UZS
+                      </TableCell>
                     </TableRow>
                   ))
                 )}

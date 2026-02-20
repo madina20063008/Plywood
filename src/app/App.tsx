@@ -16,6 +16,7 @@ import { CustomersPage } from './pages/CustomersPage';
 import { CustomerLedgerPage } from './pages/CustomerLedgerPage';
 import { ProductCreationPage } from './pages/ProductCreationPage';
 import { ProductReceivingPage } from './pages/ProductReceivingPage';
+import Services from './pages/Services';
 
 export default function App() {
   return (
@@ -130,6 +131,16 @@ export default function App() {
               <ProtectedRoute>
                 <Layout>
                   <ProductReceivingPage />
+                </Layout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/services" 
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Services />
                 </Layout>
               </ProtectedRoute>
             } 

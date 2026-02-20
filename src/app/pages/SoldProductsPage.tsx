@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
 import { Sale } from '../../lib/types';
@@ -9,17 +9,30 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
-import { Search, Edit, Eye, ShoppingBag, DollarSign, Calendar, User } from 'lucide-react';
+import { Search, Edit, Eye, ShoppingBag, DollarSign, Calendar, User, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const SoldProductsPage: React.FC = () => {
-  const { sales, updateSale, language } = useApp();
+  const { 
+    sales, 
+    updateSale, 
+    language,
+    orderStats,
+    fetchOrderStats,
+    isFetchingOrderStats 
+  } = useApp();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [editedDiscount, setEditedDiscount] = useState(0);
   const [editedPaymentMethod, setEditedPaymentMethod] = useState<'cash' | 'card' | 'mixed'>('cash');
+
+  // Fetch order stats on component mount
+  useEffect(() => {
+    fetchOrderStats();
+  }, []);
 
   const t = (key: string) => getTranslation(language, key as any);
 
@@ -78,6 +91,9 @@ export const SoldProductsPage: React.FC = () => {
       paymentMethod: editedPaymentMethod,
     });
 
+    // Refresh order stats after update
+    fetchOrderStats();
+
     toast.success(t('saleUpdated'));
     setIsEditDialogOpen(false);
     setSelectedSale(null);
@@ -113,7 +129,7 @@ export const SoldProductsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Using orderStats from API */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -121,29 +137,37 @@ export const SoldProductsPage: React.FC = () => {
             <ShoppingBag className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{sales.length}</div>
-            <p className="text-xs text-muted-foreground">
-              {language === 'uz' ? 'Jami sotuvlar' : 'Всего продаж'}
-            </p>
+            {isFetchingOrderStats ? (
+              <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{orderStats?.total_sales || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'uz' ? 'Jami sotuvlar' : 'Всего продаж'}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">{t('todayRevenue')}</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {formatCurrency(
-                sales
-                  .filter(s => new Date(s.createdAt).toDateString() === new Date().toDateString())
-                  .reduce((sum, s) => sum + s.total, 0)
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {language === 'uz' ? 'Bugungi daromad' : 'Доход за сегодня'}
-            </p>
+            {isFetchingOrderStats ? (
+              <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {formatCurrency(orderStats?.today_income || 0)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'uz' ? 'Bugungi daromad' : 'Доход за сегодня'}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -153,12 +177,18 @@ export const SoldProductsPage: React.FC = () => {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {formatCurrency(sales.reduce((sum, s) => sum + s.total, 0))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {language === 'uz' ? 'Umumiy daromad' : 'Общий доход'}
-            </p>
+            {isFetchingOrderStats ? (
+              <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">
+                  {formatCurrency(orderStats?.total_income || 0)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'uz' ? 'Umumiy daromad' : 'Общий доход'}
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -230,7 +260,7 @@ export const SoldProductsPage: React.FC = () => {
                       <TableCell>{formatTime(sale.createdAt)}</TableCell>
                       <TableCell>{getPaymentMethodBadge(sale.paymentMethod)}</TableCell>
                       <TableCell className="text-right font-semibold">
-                        {formatCurrency(sale.total)} {language === 'uz' ? 'so\'m' : 'сум'}
+                        {formatCurrency(sale.total)} {language === 'uz' ? "so'm" : "сум"}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -280,7 +310,7 @@ export const SoldProductsPage: React.FC = () => {
               <div className="space-y-2">
                 <Label>{t('subtotal')}</Label>
                 <Input 
-                  value={`${formatCurrency(selectedSale.subtotal)} ${language === 'uz' ? 'so\'m' : 'сум'}`} 
+                  value={`${formatCurrency(selectedSale.subtotal)} ${language === 'uz' ? "so'm" : "сум"}`} 
                   disabled 
                 />
               </div>
@@ -314,7 +344,7 @@ export const SoldProductsPage: React.FC = () => {
               <div className="space-y-2">
                 <Label>{t('total')}</Label>
                 <Input 
-                  value={`${formatCurrency(selectedSale.subtotal - editedDiscount)} ${language === 'uz' ? 'so\'m' : 'сум'}`} 
+                  value={`${formatCurrency(selectedSale.subtotal - editedDiscount)} ${language === 'uz' ? "so'm" : "сум"}`} 
                   disabled 
                   className="font-semibold"
                 />
@@ -377,16 +407,16 @@ export const SoldProductsPage: React.FC = () => {
                             <p>{t('dimensions')}: {item.customWidth}x{item.customHeight} mm</p>
                           )}
                           {item.cuttingService && (
-                            <p>{t('cuttingService')}: {formatCurrency(item.cuttingService.total)} {language === 'uz' ? 'so\'m' : 'сум'}</p>
+                            <p>{t('cuttingService')}: {formatCurrency(item.cuttingService.total)} {language === 'uz' ? "so'm" : "сум"}</p>
                           )}
                           {item.edgeBandingService && (
-                            <p>{t('edgeBandingService')}: {formatCurrency(item.edgeBandingService.total)} {language === 'uz' ? 'so\'m' : 'сум'}</p>
+                            <p>{t('edgeBandingService')}: {formatCurrency(item.edgeBandingService.total)} {language === 'uz' ? "so'm" : "сум"}</p>
                           )}
                         </div>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold">
-                          {formatCurrency(item.product.unitPrice * item.quantity)} {language === 'uz' ? 'so\'m' : 'сум'}
+                          {formatCurrency(item.product.unitPrice * item.quantity)} {language === 'uz' ? "so'm" : "сум"}
                         </p>
                       </div>
                     </div>
@@ -397,17 +427,17 @@ export const SoldProductsPage: React.FC = () => {
               <div className="border-t pt-4 space-y-2">
                 <div className="flex justify-between">
                   <span className="text-gray-500 dark:text-gray-400">{t('subtotal')}</span>
-                  <span className="font-semibold">{formatCurrency(selectedSale.subtotal)} {language === 'uz' ? 'so\'m' : 'сум'}</span>
+                  <span className="font-semibold">{formatCurrency(selectedSale.subtotal)} {language === 'uz' ? "so'm" : "сум"}</span>
                 </div>
                 {selectedSale.discount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-500 dark:text-gray-400">{t('discount')}</span>
-                    <span className="font-semibold text-red-600">-{formatCurrency(selectedSale.discount)} {language === 'uz' ? 'so\'m' : 'сум'}</span>
+                    <span className="font-semibold text-red-600">-{formatCurrency(selectedSale.discount)} {language === 'uz' ? "so'm" : "сум"}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg">
                   <span className="font-semibold">{t('total')}</span>
-                  <span className="font-bold text-blue-600 dark:text-blue-400">{formatCurrency(selectedSale.total)} {language === 'uz' ? 'so\'m' : 'сум'}</span>
+                  <span className="font-bold text-blue-600 dark:text-blue-400">{formatCurrency(selectedSale.total)} {language === 'uz' ? "so'm" : "сум"}</span>
                 </div>
                 <div className="flex justify-between pt-2">
                   <span className="text-gray-500 dark:text-gray-400">{t('paymentMethod')}</span>

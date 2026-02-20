@@ -1,5 +1,4 @@
-// DashboardPage.tsx - Updated with null checks
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -10,17 +9,27 @@ import { format, subDays, startOfDay } from 'date-fns';
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
 export const DashboardPage: React.FC = () => {
-  const { sales = [], products = [], language } = useApp(); // Add default values
+  const { 
+    sales = [], 
+    products = [], 
+    language,
+    dashboardStats,
+    lowStockNotifications,
+    fetchDashboardStats,
+    fetchLowStockNotifications
+  } = useApp();
+
+  useEffect(() => {
+    fetchDashboardStats();
+    fetchLowStockNotifications();
+  }, []);
 
   const t = (key: string) => getTranslation(language, key as any);
 
   const analytics = useMemo(() => {
-    // Calculate total revenue with null check
-    const totalRevenue = (sales || []).reduce((sum, sale) => sum + (sale?.total || 0), 0);
+    // Calculate total revenue with null check (fallback to dashboard stats)
+    const totalRevenue = dashboardStats?.total_income || 0;
     const totalSales = (sales || []).length;
-
-    // Low stock products (less than 20)
-    const lowStockProducts = (products || []).filter(p => (p?.stockQuantity || 0) < 20);
 
     // Revenue by day (last 7 days)
     const revenueByDay = Array.from({ length: 7 }, (_, i) => {
@@ -95,21 +104,14 @@ export const DashboardPage: React.FC = () => {
       });
     });
 
-    // Today's revenue
-    const today = startOfDay(new Date());
-    const todayRevenue = (sales || [])
-      .filter(sale => {
-        if (!sale?.createdAt) return false;
-        const saleDate = startOfDay(new Date(sale.createdAt));
-        return saleDate.getTime() === today.getTime();
-      })
-      .reduce((sum, sale) => sum + (sale?.total || 0), 0);
+    // Today's revenue from dashboard stats
+    const todayRevenue = dashboardStats?.today_income || 0;
 
     return {
       totalRevenue,
       totalSales,
-      totalProducts: (products || []).length,
-      lowStockProducts: lowStockProducts.length,
+      totalProducts: dashboardStats?.total_products || 0,
+      lowStockProducts: lowStockNotifications?.low_stock_products || 0,
       todayRevenue,
       revenueByDay,
       topProducts,
@@ -119,7 +121,7 @@ export const DashboardPage: React.FC = () => {
         edgeBanding: edgeBandingRevenue,
       },
     };
-  }, [sales, products, language]);
+  }, [sales, products, language, dashboardStats, lowStockNotifications]);
 
   return (
     <div className="space-y-6">

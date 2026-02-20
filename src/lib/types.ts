@@ -325,20 +325,6 @@ export interface BasketItem {
   basketItemId?: number; // API ID for the basket item
 }
 
-// Cutting Service API Types
-export interface ApiCutting {
-  id: number;
-  count: number;
-  price: string;
-  total_price?: string;
-}
-
-export interface CreateCuttingData {
-  count: number;
-  price: string;
-  total_price?: string;
-}
-
 // Thickness API Types
 export interface ApiThickness {
   id: number;
@@ -351,14 +337,14 @@ export interface CreateThicknessData {
   price: string;
 }
 
-// Edge Banding API Types
+// Update ApiBanding interface
 export interface ApiBanding {
   id: number;
-  thickness: ApiThickness[];
+  thickness: ApiThickness; 
   width: string;
   height: string;
-  linear_meter?: string;
-  total_price?: string;
+  linear_meter?: number;
+  total_price?: number;
 }
 
 export interface CreateBandingData {
@@ -438,4 +424,102 @@ export interface LowStockProduct {
 export interface LowStockNotification {
   low_stock_products: number;
   products: LowStockProduct[];
+}
+
+export interface LowStockProduct {
+  id: number;
+  name: string;
+  count: number;
+}
+
+export interface LowStockNotification {
+  low_stock_products: number;
+  products: LowStockProduct[];
+}
+
+export interface DashboardStats {
+  today_income: number;
+  total_income: number;
+  total_products: number;
+}
+
+export interface LowStockProduct {
+  id: number;
+  name: string;
+  count: number;
+}
+
+export interface LowStockNotification {
+  low_stock_products: number;
+  products: LowStockProduct[];
+}
+
+export interface DashboardStats {
+  today_income: number;
+  total_income: number;
+  total_products: number;
+  total_sales: number;
+  total_discount: number;
+}
+
+export interface OrderStats {
+  total_sales: number;
+  today_income: number;
+  total_income: number;
+}
+
+export interface DebtStats {
+  total_debt: number;
+  debtor_customers: number;
+  nasiya_sales: number;
+}
+
+// Update your types.ts file with these interfaces
+
+export interface ApiCutting {
+  id: number;
+  count: number;
+  price: string;
+  total_price: string;
+}
+
+export interface CreateCuttingData {
+  count: number;
+  price: string;
+  total_price: string;
+}
+
+export interface ApiThickness {
+  id: number;
+  size: string;
+  price: string;
+}
+
+export interface CreateThicknessData {
+  size: string;
+  price: string;
+}
+
+export interface ApiBanding {
+  id: number;
+  thickness: ApiThickness[];
+  width: string;
+  height: string;
+  linear_meter?: string;
+  total_price?: string;
+}
+
+export interface CreateBandingData {
+  thickness: number;
+  width: string;
+  height: string;
+}
+
+export interface IncomeStats {
+  total_cutting_income: number;
+  today_cutting_income: number;
+  total_banding_income: number;
+  today_banding_income: number;
+  total_income: number;
+  today_income: number;
 }

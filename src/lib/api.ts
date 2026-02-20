@@ -25,7 +25,8 @@ import {
 // api.ts
 const API_BASE_URL = 'https://plywood.pythonanywhere.com';
 
-// api.ts - Update apiRequest function
+// api.ts - Update the apiRequest function with token expiration handling
+
 async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
@@ -34,21 +35,11 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
     ...options.headers,
   };
 
-  // DEBUG: Check what's in localStorage
-  console.log('LocalStorage check:', {
-    accessToken: localStorage.getItem('accessToken'),
-    allKeys: Object.keys(localStorage)
-  });
-
   // Get token from localStorage
   const token = localStorage.getItem('accessToken');
-  console.log('Token retrieved:', token ? `Present (${token.substring(0, 20)}...)` : 'Missing');
   
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
-    console.log('Authorization header set with token');
-  } else {
-    console.warn('No access token found in localStorage');
   }
 
   const config: RequestInit = {
@@ -56,24 +47,52 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
     headers,
   };
 
-  console.log('Making request to:', url, 'with headers:', headers);
+  try {
+    const response = await fetch(url, config);
 
-  const response = await fetch(url, config);
+    // Handle 401 Unauthorized - Token expired or invalid
+    if (response.status === 401) {
+      console.error('Token expired or invalid - logging out');
+      
+      // Clear auth data from localStorage
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      
+      // Show toast notification
+      const toastMessage = window.navigator.language.includes('uz') 
+        ? 'Sessiya muddati tugadi. Iltimos, qaytadan kiring.'
+        : 'Сессия истекла. Пожалуйста, войдите снова.';
+      
+      // You can use toast here if you want
+      // toast.error(toastMessage);
+      
+      // Redirect to login page
+      window.location.href = '/login';
+      
+      throw new Error('Token expired');
+    }
 
-  console.log('Response status:', response.status);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API Error details:', { status: response.status, errorText });
+      throw new Error(`API Error (${response.status}): ${errorText}`);
+    }
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('API Error details:', { status: response.status, errorText });
-    throw new Error(`API Error (${response.status}): ${errorText}`);
+    // Handle 204 No Content
+    if (response.status === 204) {
+      return {} as T;
+    }
+
+    return response.json();
+  } catch (error) {
+    // Handle network errors or other fetch errors
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      console.error('Network error - unable to connect to API');
+      throw new Error('Network error. Please check your connection.');
+    }
+    throw error;
   }
-
-  // Handle 204 No Content
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return response.json();
 }
 
 // Auth API
@@ -155,7 +174,7 @@ export const userApi = {
   },
 };
 
-// Customer API - Updated with stats endpoint
+// Customer API - Updated with stats and debt endpoints
 export const customerApi = {
   // Get all customers with optional search
   getAll: (search?: string): Promise<ApiCustomer[]> => {
@@ -172,6 +191,15 @@ export const customerApi = {
     total_debt: number;
   }> => {
     return apiRequest('/customer/stats/customers/');
+  },
+
+  // Get debt statistics for financial page
+  getDebtStats: (): Promise<{
+    total_debt: number;
+    debtor_customers: number;
+    nasiya_sales: number;
+  }> => {
+    return apiRequest('/customer/stats/debt/');
   },
 
   // Create new customer
@@ -296,7 +324,7 @@ export const acceptanceApi = {
   },
 };
 
-// Notifications API - NEW
+// Notifications API
 export const notificationsApi = {
   // Get low stock notifications
   getLowStock: (): Promise<{
@@ -308,6 +336,32 @@ export const notificationsApi = {
     }>;
   }> => {
     return apiRequest('/utils/notifications/low-stock/');
+  },
+};
+
+// Dashboard Stats API
+export const dashboardApi = {
+  // Get dashboard statistics
+  getStats: (): Promise<{
+    today_income: number;
+    total_income: number;
+    total_products: number;
+    total_sales: number;
+    total_discount: number;
+  }> => {
+    return apiRequest('/utils/dashboard/stats/');
+  },
+};
+
+// Order Stats API - For Sold Products page
+export const orderStatsApi = {
+  // Get order statistics
+  getStats: (): Promise<{
+    total_sales: number;
+    today_income: number;
+    total_income: number;
+  }> => {
+    return apiRequest('/order/stats/order/');
   },
 };
 
@@ -376,12 +430,10 @@ export const basketApi = {
 
 // Cutting Service API
 export const cuttingApi = {
-  // Get all cutting services
   getAll: (): Promise<ApiCutting[]> => {
     return apiRequest('/order/cutting/');
   },
 
-  // Create cutting service
   create: (data: CreateCuttingData): Promise<ApiCutting> => {
     return apiRequest('/order/cutting/', {
       method: 'POST',
@@ -389,7 +441,13 @@ export const cuttingApi = {
     });
   },
 
-  // Delete cutting service
+  update: (id: number, data: Partial<CreateCuttingData>): Promise<ApiCutting> => {
+    return apiRequest(`/order/cutting/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   delete: (id: number): Promise<void> => {
     return apiRequest(`/order/cutting/${id}/`, {
       method: 'DELETE',
@@ -397,14 +455,12 @@ export const cuttingApi = {
   },
 };
 
-// Thickness API (for edge banding)
+// Thickness API
 export const thicknessApi = {
-  // Get all thicknesses
   getAll: (): Promise<ApiThickness[]> => {
     return apiRequest('/order/thickness/');
   },
 
-  // Create thickness
   create: (data: CreateThicknessData): Promise<ApiThickness> => {
     return apiRequest('/order/thickness/', {
       method: 'POST',
@@ -412,7 +468,13 @@ export const thicknessApi = {
     });
   },
 
-  // Delete thickness
+  update: (id: number, data: Partial<CreateThicknessData>): Promise<ApiThickness> => {
+    return apiRequest(`/order/thickness/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   delete: (id: number): Promise<void> => {
     return apiRequest(`/order/thickness/${id}/`, {
       method: 'DELETE',
@@ -420,14 +482,12 @@ export const thicknessApi = {
   },
 };
 
-// Edge Banding Service API
+// Banding Service API
 export const bandingApi = {
-  // Get all banding services
   getAll: (): Promise<ApiBanding[]> => {
     return apiRequest('/order/banding/');
   },
 
-  // Create banding service
   create: (data: CreateBandingData): Promise<ApiBanding> => {
     return apiRequest('/order/banding/', {
       method: 'POST',
@@ -435,7 +495,13 @@ export const bandingApi = {
     });
   },
 
-  // Delete banding service
+  update: (id: number, data: Partial<CreateBandingData>): Promise<ApiBanding> => {
+    return apiRequest(`/order/banding/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   delete: (id: number): Promise<void> => {
     return apiRequest(`/order/banding/${id}/`, {
       method: 'DELETE',
