@@ -62,16 +62,18 @@ export interface Product {
   height: number;
   thickness: number;
   quality: string;
-  purchasePrice?: number; // Purchase/arrival price
+  purchasePrice?: number; 
   unitPrice: number;
   stockQuantity: number;
   enabled: boolean;
   imageUrl?: string;
   arrival_date: string;
   description: string;
-  notes?: string; // Additional notes
+  notes?: string;
   createdAt: string;
   updatedAt: string;
+  unitPriceDollar?: any;
+  purchasePriceDollar?: any
 }
 
 // Service types
@@ -142,24 +144,24 @@ export interface AnalyticsData {
   revenueByCategory: { category: string; revenue: number }[];
   serviceRevenue: { cutting: number; edgeBanding: number };
 }
-
-// Product Arrival Record
+// types.ts - Update ProductArrival interface
 export interface ProductArrival {
   id: string;
+  apiId?: number;
+  acceptanceId?: number;
   productId: string;
   productName: string;
   category: string;
   quantity: number;
   purchasePrice: number;
   sellingPrice: number;
+  priceType?: 'dollar' | 'sum';  // Add this
+  exchangeRate?: string | null;   // Add this
   totalInvestment: number;
   arrivalDate: string;
-  notes?: string;
-  receivedBy: string; // Manager name
+  notes: string;
+  receivedBy: string;
   createdAt: string;
-  // API fields
-  apiId?: number;
-  acceptanceId?: number;
 }
 
 // Customer Management - UPDATED with debt field
@@ -299,6 +301,8 @@ export interface ApiAcceptanceHistory {
   acceptance: number;
   product: number;
   product_name: string;
+  exchange_rate: string | null;  // Add this
+  price_type: 'dollar' | 'sum';  // Add this
   arrival_price: string;
   sale_price: string;
   count: number;
@@ -345,6 +349,7 @@ export interface ApiBanding {
   height: string;
   linear_meter?: number;
   total_price?: number;
+  created_at?: string;
 }
 
 export interface CreateBandingData {
@@ -481,6 +486,7 @@ export interface ApiCutting {
   count: number;
   price: string;
   total_price: string;
+  created_at?: string;
 }
 
 export interface CreateCuttingData {
@@ -522,4 +528,9 @@ export interface IncomeStats {
   today_banding_income: number;
   total_income: number;
   today_income: number;
+}
+
+export interface ApiQuality {
+  id: number;
+  name: string;
 }

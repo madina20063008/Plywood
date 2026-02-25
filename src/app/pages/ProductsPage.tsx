@@ -11,11 +11,19 @@ import { Search, ShoppingCart, Package, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 
-const categories = ['LDSP', 'MDF', 'DVP', 'DSP', 'OTHER'];
 const defaultImage = 'https://images.unsplash.com/photo-1644925757334-d0397c01518c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwbHl3b29kJTIwd29vZCUyMHBhbmVsJTIwdGV4dHVyZXxlbnwxfHx8fDE3NzAzNzcyMTR8MA&ixlib=rb-4.1.0&q=80&w=1080';
 
 // Local storage key
 const CART_STORAGE_KEY = 'app_cart';
+
+// Map quality name to API quality value
+const mapQualityToApiValue = (qualityName: string): 'standard' | 'economic' | 'premium' | undefined => {
+  const lowerName = qualityName.toLowerCase();
+  if (lowerName.includes('premium')) return 'premium';
+  if (lowerName.includes('economic') || lowerName.includes('эконом')) return 'economic';
+  if (lowerName.includes('standard') || lowerName.includes('стандарт')) return 'standard';
+  return undefined;
+};
 
 export const ProductsPage: React.FC = () => {
   const { 
@@ -26,12 +34,18 @@ export const ProductsPage: React.FC = () => {
     fetchProducts,
     isFetchingProducts,
     user,
-    fetchBasket
+    fetchBasket,
+    categories = [],
+    fetchCategories,
+    isFetchingCategories,
+    qualities = [],
+    fetchQualities,
+    isFetchingQualities
   } = useApp();
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedQuality, setSelectedQuality] = useState<string>('all');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [selectedQualityId, setSelectedQualityId] = useState<string>('all');
   const [isAddingToCart, setIsAddingToCart] = useState<Record<number, boolean>>({});
   const [localCart, setLocalCart] = useState<CartItem[]>([]);
   const navigate = useNavigate();
@@ -67,33 +81,36 @@ export const ProductsPage: React.FC = () => {
     }
   }, [cart]);
 
-  // Fetch products when component mounts and when user is authenticated
+  // Fetch categories, qualities and products when component mounts
   useEffect(() => {
     if (user) {
+      fetchCategories();
+      fetchQualities();
       fetchProducts();
-      fetchBasket(); // Fetch basket to sync with API
+      fetchBasket();
     }
   }, [user]);
 
-  // Apply filters when search or category changes
+  // Apply filters when search or filters change
   useEffect(() => {
     if (user) {
       const filters: any = {};
+      
       if (searchQuery) filters.search = searchQuery;
-      if (selectedCategory !== 'all') {
-        // Map category name to ID
-        const categoryMap: Record<string, number> = {
-          'LDSP': 1,
-          'MDF': 2,
-          'DVP': 3,
-          'DSP': 4,
-          'OTHER': 5
-        };
-        filters.category = categoryMap[selectedCategory];
+      
+      if (selectedCategoryId !== 'all') {
+        filters.category = parseInt(selectedCategoryId);
       }
-      if (selectedQuality !== 'all') {
-        filters.quality = selectedQuality === 'premium' ? 'premium' : 
-                          selectedQuality === 'economy' ? 'economy' : 'standard';
+      
+      if (selectedQualityId !== 'all') {
+        // Find the quality name by ID
+        const selectedQuality = qualities.find(q => q.id.toString() === selectedQualityId);
+        if (selectedQuality) {
+          const qualityValue = mapQualityToApiValue(selectedQuality.name);
+          if (qualityValue) {
+            filters.quality = qualityValue;
+          }
+        }
       }
       
       // Debounce search
@@ -103,7 +120,7 @@ export const ProductsPage: React.FC = () => {
       
       return () => clearTimeout(timeoutId);
     }
-  }, [searchQuery, selectedCategory, selectedQuality, user]);
+  }, [searchQuery, selectedCategoryId, selectedQualityId, user, qualities]);
 
   const handleAddToCart = async (product: Product) => {
     const cartItem: CartItem = {
@@ -141,15 +158,24 @@ export const ProductsPage: React.FC = () => {
     switch (quality?.toLowerCase()) {
       case 'premium':
         return language === 'uz' ? 'Premium' : 'Премиум';
-      case 'economy':
-        return language === 'uz' ? 'Econom' : 'Эконом';
+      case 'economic':
+        return language === 'uz' ? 'Economic' : 'Эконом';
       default:
         return language === 'uz' ? 'Standart' : 'Стандарт';
     }
   };
 
+  // Get quality name by ID
+  const getQualityNameById = (qualityId: number): string => {
+    const quality = qualities.find(q => q.id === qualityId);
+    return quality?.name || '';
+  };
+
   // Merge context cart with local cart for display
   const displayCart = cart.length > 0 ? cart : localCart;
+
+  // Loading state
+  const isLoading = isFetchingProducts || isFetchingCategories || isFetchingQualities;
 
   if (!user) {
     return (
@@ -195,36 +221,56 @@ export const ProductsPage: React.FC = () => {
                 className="pl-9"
               />
             </div>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            
+            {/* Category Select - From API */}
+            <Select 
+              value={selectedCategoryId} 
+              onValueChange={setSelectedCategoryId}
+              disabled={isFetchingCategories}
+            >
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder={language === 'uz' ? 'Kategoriya' : 'Категория'} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{language === 'uz' ? 'Barcha kategoriyalar' : 'Все категории'}</SelectItem>
+                <SelectItem value="all">
+                  {language === 'uz' ? 'Barcha kategoriyalar' : 'Все категории'}
+                </SelectItem>
                 {categories.map(cat => (
-                  <SelectItem key={cat} value={cat}>{t(cat)}</SelectItem>
+                  <SelectItem key={cat.id} value={cat.id.toString()}>
+                    {cat.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Select value={selectedQuality} onValueChange={setSelectedQuality}>
+            
+            {/* Quality Select - From API */}
+            <Select 
+              value={selectedQualityId} 
+              onValueChange={setSelectedQualityId}
+              disabled={isFetchingQualities}
+            >
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder={language === 'uz' ? 'Sifat' : 'Качество'} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{language === 'uz' ? 'Barcha sifatlar' : 'Все качества'}</SelectItem>
-                <SelectItem value="premium">Premium</SelectItem>
-                <SelectItem value="standard">{language === 'uz' ? 'Standart' : 'Стандарт'}</SelectItem>
-                <SelectItem value="economy">{language === 'uz' ? 'Econom' : 'Эконом'}</SelectItem>
+                <SelectItem value="all">
+                  {language === 'uz' ? 'Barcha sifatlar' : 'Все качества'}
+                </SelectItem>
+                {qualities.map(quality => (
+                  <SelectItem key={quality.id} value={quality.id.toString()}>
+                    {quality.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
         </CardHeader>
         <CardContent>
-          {isFetchingProducts ? (
+          {isLoading ? (
             <div className="flex justify-center items-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
               <span className="ml-2 text-gray-500">
-                {language === 'uz' ? 'Mahsulotlar yuklanmoqda...' : 'Загрузка продуктов...'}
+                {language === 'uz' ? 'Ma\'lumotlar yuklanmoqda...' : 'Загрузка данных...'}
               </span>
             </div>
           ) : products.length === 0 ? (
@@ -239,6 +285,7 @@ export const ProductsPage: React.FC = () => {
               {products.map((product) => {
                 const isInCart = displayCart.some((item: CartItem) => item.product?.id === product.id);
                 const isAdding = isAddingToCart[product.id];
+                const qualityName = getQualityNameById(product.quality as any);
                 
                 return (
                   <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
@@ -257,12 +304,12 @@ export const ProductsPage: React.FC = () => {
                       <div className="space-y-2">
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="font-semibold text-lg leading-tight">{product.name}</h3>
-                          <Badge variant="secondary">{t(product.category)}</Badge>
+                          <Badge variant="secondary">{product.category}</Badge>
                         </div>
                         <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
                           <p>{product.width} × {product.height} mm</p>
                           <p>{t('thickness')}: {product.thickness} mm</p>
-                          <p>{t('quality')}: {getQualityTranslation(product.quality)}</p>
+                          <p>{t('quality')}: {qualityName || getQualityTranslation(product.quality)}</p>
                         </div>
                       </div>
                     </CardHeader>

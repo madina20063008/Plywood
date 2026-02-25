@@ -1,10 +1,19 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { BarChart3, TrendingUp, Package, AlertTriangle, DollarSign } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart3, TrendingUp, Package, AlertTriangle, DollarSign, Scissors, Ruler } from 'lucide-react';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format, subDays, startOfDay } from 'date-fns';
+
+interface IncomeStats {
+  total_cutting_income: number;
+  today_cutting_income: number;
+  total_banding_income: number;
+  today_banding_income: number;
+  total_income: number;
+  today_income: number;
+}
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
@@ -19,12 +28,49 @@ export const DashboardPage: React.FC = () => {
     fetchLowStockNotifications
   } = useApp();
 
+  const [incomeStats, setIncomeStats] = useState<IncomeStats>({
+    total_cutting_income: 0,
+    today_cutting_income: 0,
+    total_banding_income: 0,
+    today_banding_income: 0,
+    total_income: 0,
+    today_income: 0
+  });
+
+  const [isLoadingIncome, setIsLoadingIncome] = useState(false);
+
   useEffect(() => {
     fetchDashboardStats();
     fetchLowStockNotifications();
+    fetchIncomeStats();
   }, []);
 
+  const fetchIncomeStats = async () => {
+    setIsLoadingIncome(true);
+    try {
+      const response = await fetch('https://plywood.pythonanywhere.com/order/income/cutting-banding/', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Income stats fetched:', data); // Debug uchun
+        setIncomeStats(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch income stats:', error);
+    } finally {
+      setIsLoadingIncome(false);
+    }
+  };
+
   const t = (key: string) => getTranslation(language, key as any);
+
+  const formatNumber = (num: number) => {
+    return num.toLocaleString() + ' UZS';
+  };
 
   const analytics = useMemo(() => {
     // Calculate total revenue with null check (fallback to dashboard stats)
@@ -89,39 +135,22 @@ export const DashboardPage: React.FC = () => {
       revenue,
     }));
 
-    // Service revenue
-    let cuttingRevenue = 0;
-    let edgeBandingRevenue = 0;
-
-    (sales || []).forEach(sale => {
-      (sale?.items || []).forEach(item => {
-        if (item?.cuttingService) {
-          cuttingRevenue += (item.cuttingService?.total || 0);
-        }
-        if (item?.edgeBandingService) {
-          edgeBandingRevenue += (item.edgeBandingService?.total || 0);
-        }
-      });
-    });
-
-    // Today's revenue from dashboard stats
-    const todayRevenue = dashboardStats?.today_income || 0;
-
     return {
       totalRevenue,
       totalSales,
       totalProducts: dashboardStats?.total_products || 0,
       lowStockProducts: lowStockNotifications?.low_stock_products || 0,
-      todayRevenue,
+      todayRevenue: dashboardStats?.today_income || 0,
       revenueByDay,
       topProducts,
       revenueByCategory,
+      // Service revenue FROM API - bu muhim qism
       serviceRevenue: {
-        cutting: cuttingRevenue,
-        edgeBanding: edgeBandingRevenue,
-      },
+        cutting: incomeStats.total_cutting_income,
+        edgeBanding: incomeStats.total_banding_income,
+      }
     };
-  }, [sales, products, language, dashboardStats, lowStockNotifications]);
+  }, [sales, products, language, dashboardStats, lowStockNotifications, incomeStats]);
 
   return (
     <div className="space-y-6">
@@ -132,7 +161,9 @@ export const DashboardPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Key Metrics */}
+     
+
+      {/* Key Metrics - Existing Section */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
@@ -233,40 +264,83 @@ export const DashboardPage: React.FC = () => {
 
         <Card>
           <CardHeader>
-            <CardTitle>{t('revenueByCategory')}</CardTitle>
+            <CardTitle>{language === 'uz' ? 'Xizmatlar daromadi' : 'Доход от услуг'}</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={analytics.revenueByCategory}
-                  dataKey="revenue"
-                  nameKey="category"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  label={(entry) => `${entry.category}: ${((entry.revenue / (analytics.totalRevenue || 1)) * 100).toFixed(1)}%`}
-                >
-                  {analytics.revenueByCategory.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'var(--background)', 
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px'
-                  }}
-                  formatter={(value: number) => `${value.toLocaleString()} UZS`}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="space-y-6">
+              {/* Kesish xizmati */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    {language === 'uz' ? 'Kesish xizmati' : 'Услуга распила'}
+                  </span>
+                  <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                    {formatNumber(incomeStats.total_cutting_income)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>{language === 'uz' ? 'Jami' : 'Всего'}: {formatNumber(incomeStats.total_cutting_income)}</span>
+                  <span>{language === 'uz' ? 'Bugun' : 'Сегодня'}: {formatNumber(incomeStats.today_cutting_income)}</span>
+                </div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-600 dark:bg-blue-400 transition-all"
+                    style={{ 
+                      width: `${incomeStats.total_income > 0 
+                        ? (incomeStats.total_cutting_income / incomeStats.total_income * 100) 
+                        : 0}%` 
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Kromkalash xizmati */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    {language === 'uz' ? 'Kromkalash xizmati' : 'Услуга кромкования'}
+                  </span>
+                  <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                    {formatNumber(incomeStats.total_banding_income)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>{language === 'uz' ? 'Jami' : 'Всего'}: {formatNumber(incomeStats.total_banding_income)}</span>
+                  <span>{language === 'uz' ? 'Bugun' : 'Сегодня'}: {formatNumber(incomeStats.today_banding_income)}</span>
+                </div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-green-600 dark:bg-green-400 transition-all"
+                    style={{ 
+                      width: `${incomeStats.total_income > 0 
+                        ? (incomeStats.total_banding_income / incomeStats.total_income * 100) 
+                        : 0}%` 
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Jami xizmatlar */}
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-gray-900 dark:text-gray-100">
+                    {language === 'uz' ? 'Jami xizmatlar' : 'Всего услуг'}
+                  </span>
+                  <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                    {formatNumber(incomeStats.total_income)}
+                  </span>
+                </div>
+                <div className="flex justify-end text-xs text-gray-500 mt-1">
+                  <span>{language === 'uz' ? 'Bugun' : 'Сегодня'}: {formatNumber(incomeStats.today_income)}</span>
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Charts Row 2 */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-1">
         <Card>
           <CardHeader>
             <CardTitle>{t('topSellingProducts')}</CardTitle>
@@ -302,68 +376,9 @@ export const DashboardPage: React.FC = () => {
             </ResponsiveContainer>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{language === 'uz' ? 'Xizmatlar daromadi' : 'Доход от услуг'}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{t('cuttingService')}</span>
-                  <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                    {analytics.serviceRevenue.cutting.toLocaleString()} UZS
-                  </span>
-                </div>
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-600 dark:bg-blue-400 transition-all"
-                    style={{ 
-                      width: `${((analytics.serviceRevenue.cutting / (analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding) * 100) || 0)}%` 
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{t('edgeBandingService')}</span>
-                  <span className="text-lg font-bold text-green-600 dark:text-green-400">
-                    {analytics.serviceRevenue.edgeBanding.toLocaleString()} UZS
-                  </span>
-                </div>
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-green-600 dark:bg-green-400 transition-all"
-                    style={{ 
-                      width: `${((analytics.serviceRevenue.edgeBanding / (analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding) * 100) || 0)}%` 
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">{language === 'uz' ? 'Jami xizmatlar' : 'Всего услуг'}</span>
-                  <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                    {(analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding).toLocaleString()} UZS
-                  </span>
-                </div>
-              </div>
-
-              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                  {language === 'uz' ? 'Xizmatlar ulushi' : 'Доля услуг'}
-                </p>
-                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                  {((analytics.serviceRevenue.cutting + analytics.serviceRevenue.edgeBanding) / (analytics.totalRevenue || 1) * 100).toFixed(1)}%
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
 };
+
+export default DashboardPage;

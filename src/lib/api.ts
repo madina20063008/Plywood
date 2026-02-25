@@ -9,7 +9,6 @@ import {
   ProductFilters,
   ApiCategory, 
   UpdateProductData,
-  CreateAcceptanceData,
   ApiAcceptance,
   ApiAcceptanceHistory,
   CreateCuttingData,
@@ -313,10 +312,11 @@ export const productApi = {
   },
 };
 
-// Acceptance (Product Receiving) API
+// In api.ts - acceptanceApi
 export const acceptanceApi = {
   // Create new acceptance
-  create: (data: CreateAcceptanceData): Promise<ApiAcceptance> => {
+  create: (data: any): Promise<ApiAcceptance> => {
+    console.log('Acceptance API called with data:', data);
     return apiRequest<ApiAcceptance>('/acceptance/acceptances/', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -545,6 +545,44 @@ export const orderApi = {
   // Delete order
   delete: (id: number): Promise<void> => {
     return apiRequest(`/order/order/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+};
+
+// api.ts ga qo'shamiz
+
+// Quality API
+export const qualityApi = {
+  // Get all qualities
+  getAll: (): Promise<Array<{ id: number; name: string }>> => {
+    return apiRequest('/product/quality/');
+  },
+
+  // Get quality by ID
+  getById: (id: number): Promise<{ id: number; name: string }> => {
+    return apiRequest(`/product/quality/${id}/`);
+  },
+
+  // Create new quality
+  create: (data: { name: string }): Promise<{ id: number; name: string }> => {
+    return apiRequest('/product/quality/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update quality
+  update: (id: number, data: { name: string }): Promise<{ id: number; name: string }> => {
+    return apiRequest(`/product/quality/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete quality
+  delete: (id: number): Promise<void> => {
+    return apiRequest(`/product/quality/${id}/`, {
       method: 'DELETE',
     });
   },

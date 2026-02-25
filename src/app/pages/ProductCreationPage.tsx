@@ -10,11 +10,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { ArrowLeft, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-const qualities = [
-  { value: 'standard', label: 'Standard' },
-  { value: 'economic', label: 'Economic' },
-  { value: 'premium', label: 'Premium' }
-];
+// Map API quality name to our app's quality values
+const mapQualityToAppValue = (qualityName: string): 'standard' | 'economic' | 'premium' => {
+  const lowerName = qualityName.toLowerCase();
+  if (lowerName.includes('premium')) return 'premium';
+  if (lowerName.includes('economic') || lowerName.includes('эконом')) return 'economic';
+  return 'standard'; // Default to standard
+};
+
+// Map app quality value to API quality name (for finding matching ID)
+const mapAppValueToQualityName = (value: 'standard' | 'economic' | 'premium'): string => {
+  switch (value) {
+    case 'premium':
+      return 'Premium';
+    case 'economic':
+      return 'Economic';
+    case 'standard':
+    default:
+      return 'Standart';
+  }
+};
 
 export const ProductCreationPage: React.FC = () => {
   const { 
@@ -23,13 +38,17 @@ export const ProductCreationPage: React.FC = () => {
     language, 
     categories, 
     fetchCategories,
-    isFetchingCategories 
+    isFetchingCategories,
+    qualities,
+    fetchQualities,
+    isFetchingQualities
   } = useApp();
   
   const navigate = useNavigate();
   
   // Use string values for inputs to allow empty state
   const [formData, setFormData] = useState({
+    id: 0,
     name: '',
     category: '',
     color: '#000000',
@@ -44,9 +63,10 @@ export const ProductCreationPage: React.FC = () => {
 
   const t = (key: string) => getTranslation(language, key as any);
 
-  // Fetch categories on component mount
+  // Fetch categories and qualities on component mount
   useEffect(() => {
     fetchCategories();
+    fetchQualities();
   }, []);
 
   // Set default category when categories are loaded
@@ -56,8 +76,14 @@ export const ProductCreationPage: React.FC = () => {
     }
   }, [categories]);
 
+  // Find the selected quality object
+  const selectedQuality = qualities.find(q => 
+    q.name.toLowerCase() === mapAppValueToQualityName(formData.quality).toLowerCase()
+  );
+
   const resetForm = () => {
     setFormData({
+      id: 0,
       name: '',
       category: categories[0]?.name || '',
       color: '#000000',
@@ -83,6 +109,12 @@ export const ProductCreationPage: React.FC = () => {
       newErrors.category = language === 'uz'
         ? 'Kategoriya tanlanishi shart'
         : 'Категория должна быть выбрана';
+    }
+
+    if (!selectedQuality) {
+      newErrors.quality = language === 'uz'
+        ? 'Sifat tanlanishi shart'
+        : 'Качество должно быть выбрано';
     }
 
     // Validate width
@@ -152,6 +184,7 @@ export const ProductCreationPage: React.FC = () => {
     try {
       // Convert string values to numbers for the API
       await addProduct({
+        id: formData.id,
         name: formData.name,
         category: formData.category,
         color: formData.color,
@@ -186,7 +219,7 @@ export const ProductCreationPage: React.FC = () => {
   };
 
   const handleCancel = () => {
-    if (formData.name || formData.description || formData.width !== '0' || formData.height !== '0' || formData.thickness !== '0') {
+    if (formData.name || formData.description || formData.width !== '' || formData.height !== '' || formData.thickness !== '') {
       if (window.confirm(language === 'uz' 
         ? 'O\'zgarishlar saqlanmaydi. Chiqishni xohlaysizmi?'
         : 'Изменения не будут сохранены. Вы хотите выйти?'
@@ -205,17 +238,17 @@ export const ProductCreationPage: React.FC = () => {
     }
   };
 
-  const getQualityLabel = (value: string) => {
-    const quality = qualities.find(q => q.value === value);
-    return quality ? quality.label : value;
+  const getQualityLabel = (qualityName: string) => {
+    return qualityName || formData.quality;
   };
 
-  if (isFetchingCategories) {
+  // Loading state
+  if (isFetchingCategories || isFetchingQualities) {
     return (
       <div className="flex justify-center items-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
         <span className="ml-2 text-gray-500">
-          {language === 'uz' ? 'Kategoriyalar yuklanmoqda...' : 'Загрузка категорий...'}
+          {language === 'uz' ? 'Ma\'lumotlar yuklanmoqda...' : 'Загрузка данных...'}
         </span>
       </div>
     );
@@ -309,7 +342,7 @@ export const ProductCreationPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Quality */}
+              {/* Quality - From API */}
               <div>
                 <Label htmlFor="quality">
                   {t('quality')}
@@ -320,19 +353,32 @@ export const ProductCreationPage: React.FC = () => {
                   onValueChange={(value: 'standard' | 'economic' | 'premium') => 
                     setFormData({ ...formData, quality: value })
                   }
-                  disabled={isAddingProduct}
+                  disabled={isAddingProduct || qualities.length === 0}
                 >
-                  <SelectTrigger>
-                    <SelectValue />
+                  <SelectTrigger className={errors.quality ? 'border-red-500' : ''}>
+                    <SelectValue placeholder={language === 'uz' ? 'Sifatni tanlang' : 'Выберите качество'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {qualities.map((q) => (
-                      <SelectItem key={q.value} value={q.value}>
-                        {q.label}
+                    {qualities.map((quality) => (
+                      <SelectItem 
+                        key={quality.id} 
+                        value={mapQualityToAppValue(quality.name)}
+                      >
+                        {quality.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.quality && (
+                  <p className="text-sm text-red-500 mt-1">{errors.quality}</p>
+                )}
+                {qualities.length === 0 && (
+                  <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-1">
+                    {language === 'uz' 
+                      ? 'Sifatlar topilmadi.' 
+                      : 'Качества не найдены.'}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -471,7 +517,7 @@ export const ProductCreationPage: React.FC = () => {
                     {formData.name || (language === 'uz' ? 'Mahsulot nomi' : 'Название продукта')}
                   </p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {formData.category || (language === 'uz' ? 'Kategoriya' : 'Категория')} • {getQualityLabel(formData.quality)}
+                    {formData.category || (language === 'uz' ? 'Kategoriya' : 'Категория')} • {selectedQuality?.name || formData.quality}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
                     {formData.width || '0'} × {formData.height || '0'} × {formData.thickness || '0'} mm
@@ -506,7 +552,7 @@ export const ProductCreationPage: React.FC = () => {
               </Button>
               <Button 
                 type="submit" 
-                disabled={isAddingProduct || categories.length === 0}
+                disabled={isAddingProduct || categories.length === 0 || qualities.length === 0}
               >
                 {isAddingProduct ? (
                   <>

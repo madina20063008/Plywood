@@ -14,6 +14,7 @@ import {
   notificationsApi,
   dashboardApi,
   orderStatsApi,
+  qualityApi
 } from '../lib/api';
 import { 
   User, 
@@ -34,12 +35,9 @@ import {
   ApiCategory,
   ApiAcceptanceHistory,
   CreateAcceptanceData,
-  ApiBasket,
   CuttingService,
   EdgeBandingService,
-  ApiCutting,
   CreateCuttingData,
-  ApiBanding,
   CreateBandingData,
   ApiThickness,
   CreateThicknessData,
@@ -49,6 +47,7 @@ import {
   DashboardStats,
   OrderStats,
   DebtStats,
+  ApiQuality
 } from '../lib/types';
 import { toast } from 'sonner';
 
@@ -218,7 +217,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [isUpdatingProduct, setIsUpdatingProduct] = useState(false);
   const [isDeletingProduct, setIsDeletingProduct] = useState(false);
-  
+  const [qualities, setQualities] = useState<ApiQuality[]>([]);
+  const [isFetchingQualities, setIsFetchingQualities] = useState(false);
   // Separate loading states for category operations
   const [isFetchingCategories, setIsFetchingCategories] = useState(false);
   
@@ -300,7 +300,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const hasFetchedDashboardStats = useRef(false);
   const hasFetchedOrderStats = useRef(false);
   const hasFetchedNotifications = useRef(false);
-
+  const hasFetchedQualities = useRef(false);
   // ============== Mapping Functions ==============
 // In your AppProvider component, add this function and useEffect
 
@@ -369,7 +369,30 @@ useEffect(() => {
       createdAt: new Date().toISOString(),
     };
   };
+const fetchQualities = useCallback(async () => {
+  if (!user) return;
+  
+  setIsFetchingQualities(true);
+  try {
+    const data = await qualityApi.getAll();
+    setQualities(data || []);
+    hasFetchedQualities.current = true;
+  } catch (error) {
+    console.error('Failed to fetch qualities:', error);
+    toast.error(language === 'uz' 
+      ? 'Sifatlarni yuklashda xatolik yuz berdi' 
+      : 'Ошибка при загрузке качеств');
+  } finally {
+    setIsFetchingQualities(false);
+  }
+}, [user, language]);
 
+// useEffect ga qo'shamiz
+useEffect(() => {
+  if (user && !hasFetchedQualities.current) {
+    fetchQualities();
+  }
+}, [user]);
   // Map app User to API user data
   const mapUserToApiData = (userData: Omit<User, 'id' | 'createdAt'>): CreateUserData => {
     const mapAppRole = (role: UserRole): 's' | 'a' | 'm' => {
@@ -469,7 +492,7 @@ const getCustomerById = useCallback(async (id: number): Promise<Customer | null>
   // Map app Product to API product data
   const mapProductToApiData = (productData: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): CreateProductData => {
     const category = categories.find(c => c.name === productData.category);
-    const categoryId = category?.id || 5;
+    const categoryId = category?.id;
 
     const mapQuality = (quality: string): 'standard' | 'economic' | 'premium' => {
       switch (quality?.toLowerCase()) {
@@ -885,7 +908,7 @@ const getCustomerById = useCallback(async (id: number): Promise<Customer | null>
       if (productData.description) apiData.description = productData.description;
       if (productData.category) {
         const category = categories.find(c => c.name === productData.category);
-        apiData.category = category?.id || 5;
+        apiData.category = category?.id ;
       }
 
       const updatedApiProduct = await productApi.update(parseInt(id), apiData);
@@ -1421,120 +1444,149 @@ const getCustomerById = useCallback(async (id: number): Promise<Customer | null>
     }
   };
 
-  // ============== Acceptance API Functions ==============
-
-  const fetchAcceptanceHistory = useCallback(async () => {
-    if (!user) return;
+  // context.tsx - fetchAcceptanceHistory function (UPDATED)
+const fetchAcceptanceHistory = useCallback(async () => {
+  if (!user) return;
+  
+  setIsFetchingAcceptanceHistory(true);
+  try {
+    const history = await acceptanceApi.getHistory();
+    console.log('Acceptance history from API:', history);
+    setAcceptanceHistory(history || []);
     
-    setIsFetchingAcceptanceHistory(true);
-    try {
-      const history = await acceptanceApi.getHistory();
-      setAcceptanceHistory(history || []);
-      
-      // Also update productArrivals state with API data
-      const mappedArrivals: ProductArrival[] = (history || []).map(item => ({
-        id: item.id.toString(),
-        apiId: item.id,
-        acceptanceId: item.acceptance,
-        productId: item.product.toString(),
-        productName: item.product_name,
-        category: getCategoryNameFromProductId(item.product.toString()) || 'OTHER',
-        quantity: item.count,
-        purchasePrice: parseFloat(item.arrival_price) || 0,
-        sellingPrice: parseFloat(item.sale_price) || 0,
-        totalInvestment: (parseFloat(item.arrival_price) || 0) * item.count,
-        arrivalDate: item.arrival_date,
-        notes: item.description || '',
-        receivedBy: user?.full_name || 'Unknown',
-        createdAt: item.created_at,
-      }));
-      
-      setProductArrivals(mappedArrivals);
-    } catch (error) {
-      console.error('Failed to fetch acceptance history:', error);
-      toast.error(language === 'uz' 
-        ? 'Qabul qilish tarixini yuklashda xatolik yuz berdi' 
-        : 'Ошибка при загрузке истории приема');
-    } finally {
-      setIsFetchingAcceptanceHistory(false);
+    // Also update productArrivals state with API data
+    const mappedArrivals: ProductArrival[] = (history || []).map(item => ({
+      id: item.id.toString(),
+      apiId: item.id,
+      acceptanceId: item.acceptance,
+      productId: item.product.toString(),
+      productName: item.product_name,
+      category: getCategoryNameFromProductId(item.product.toString()) || 'OTHER',
+      quantity: item.count,
+      purchasePrice: parseFloat(item.arrival_price) || 0,
+      sellingPrice: parseFloat(item.sale_price) || 0,
+      priceType: item.price_type, // Add price type from API
+      exchangeRate: item.exchange_rate, // Add exchange rate from API
+      totalInvestment: (parseFloat(item.arrival_price) || 0) * item.count,
+      arrivalDate: item.arrival_date,
+      notes: item.description || '',
+      receivedBy: user?.full_name || 'Unknown',
+      createdAt: item.created_at,
+    }));
+    
+    console.log('Mapped arrivals with exchange rates:', mappedArrivals);
+    setProductArrivals(mappedArrivals);
+  } catch (error) {
+    console.error('Failed to fetch acceptance history:', error);
+    toast.error(language === 'uz' 
+      ? 'Qabul qilish tarixini yuklashda xatolik yuz berdi' 
+      : 'Ошибка при загрузке истории приема');
+  } finally {
+    setIsFetchingAcceptanceHistory(false);
+  }
+}, [user, language, products]);
+
+// context.tsx - addProductArrival function (FIXED VERSION)
+const addProductArrival = async (arrival: Omit<ProductArrival, 'id' | 'createdAt' | 'apiId' | 'acceptanceId'>) => {
+  if (!user) {
+    toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+    return;
+  }
+
+  try {
+    console.log('🟢 addProductArrival called with:', {
+      productId: arrival.productId,
+      priceType: arrival.priceType,
+      purchasePrice: arrival.purchasePrice,
+      sellingPrice: arrival.sellingPrice
+    });
+
+    const product = products.find(p => p.id.toString() === arrival.productId);
+    if (!product) {
+      throw new Error('Product not found');
     }
-  }, [user, language, products]);
 
-  const addProductArrival = async (arrival: Omit<ProductArrival, 'id' | 'createdAt' | 'apiId' | 'acceptanceId'>) => {
-    if (!user) {
-      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
-      return;
+    const quantity = Number(arrival.quantity);
+    
+    // API ga yuboriladigan ma'lumotlar
+    const acceptanceData: any = {
+      product: product.id,
+      arrival_price: arrival.purchasePrice.toString(),
+      sale_price: arrival.sellingPrice.toString(),
+      count: quantity,
+      arrival_date: arrival.arrivalDate,
+      description: arrival.notes || '',
+      price_type: arrival.priceType,  // BU 'dollar' YOKI 'sum' BO'LISHI KERAK
+    };
+
+    // Agar price_type dollar bo'lsa, exchange_rate qo'shamiz
+    if (arrival.priceType === 'dollar') {
+      // Bu yerda siz exchange_rate ni qayerdan olishingizni aniqlashingiz kerak
+      // Masalan, formadan yoki boshqa manbadan
+      acceptanceData.exchange_rate = arrival.exchangeRate?.toString() || '12500'; // Default yoki formadan olingan
     }
 
-    try {
-      // Find the product to get its API ID
-      const product = products.find(p => p.id.toString() === arrival.productId);
-      if (!product) {
-        throw new Error('Product not found');
-      }
+    console.log('📤 Sending to acceptance API:', acceptanceData);
 
-      // Get the API product ID
-      const productApiId = product.id;
-      
-      const acceptanceData: CreateAcceptanceData = {
-        product: productApiId,
-        arrival_price: arrival.purchasePrice.toString(),
-        sale_price: arrival.sellingPrice.toString(),
-        count: arrival.quantity,
-        arrival_date: arrival.arrivalDate,
-        description: arrival.notes || '',
-      };
-
-      // Create acceptance via API
-      const newAcceptance = await acceptanceApi.create(acceptanceData);
-      
-      // Create local arrival record
-      const newArrival: ProductArrival = {
-        ...arrival,
-        id: newAcceptance.id.toString(),
-        apiId: newAcceptance.id,
-        acceptanceId: newAcceptance.id,
-        productName: product.name,
-        category: product.category,
-        receivedBy: user.full_name,
-        totalInvestment: arrival.purchasePrice * arrival.quantity,
-        createdAt: new Date().toISOString(),
-      };
-      
-      setProductArrivals(prev => [newArrival, ...prev]);
-      
-      // Update product stock and prices
-      setProducts(prevProducts =>
-        prevProducts.map(p =>
-          p.id.toString() === arrival.productId
-            ? { 
-                ...p, 
-                stockQuantity: p.stockQuantity + arrival.quantity,
+    const newAcceptance = await acceptanceApi.create(acceptanceData);
+    console.log('📥 API response:', newAcceptance);
+    
+    // API dan kelgan ma'lumotlarni saqlash
+    const newArrival: ProductArrival = {
+      ...arrival,
+      id: newAcceptance.id.toString(),
+      apiId: newAcceptance.id,
+      acceptanceId: newAcceptance.id,
+      productName: product.name,
+      category: product.category,
+      receivedBy: user.full_name,
+      exchangeRate: newAcceptance.exchange_rate, // API dan kelgan exchange_rate ni saqlaymiz
+      totalInvestment: arrival.purchasePrice * arrival.quantity,
+      createdAt: new Date().toISOString(),
+    };
+    
+    console.log('💾 Saving to state:', newArrival);
+    
+    setProductArrivals(prev => [newArrival, ...prev]);
+    
+    // Update product stock and prices
+    setProducts(prevProducts =>
+      prevProducts.map(p =>
+        p.id.toString() === arrival.productId
+          ? { 
+              ...p, 
+              stockQuantity: p.stockQuantity + quantity,
+              // Dollar va sum narxlarni alohida saqlaymiz
+              ...(arrival.priceType === 'dollar' ? {
+                purchasePriceDollar: arrival.purchasePrice,
+                unitPriceDollar: arrival.sellingPrice,
+                lastPriceType: 'dollar'
+              } : {
                 purchasePrice: arrival.purchasePrice,
                 unitPrice: arrival.sellingPrice,
-                arrival_date: arrival.arrivalDate,
-              }
-            : p
-        )
-      );
+                lastPriceType: 'sum'
+              }),
+              arrival_date: arrival.arrivalDate,
+            }
+          : p
+      )
+    );
+    
+    // Refresh acceptance history to get latest data
+    await fetchAcceptanceHistory();
+    
+    toast.success(language === 'uz' 
+      ? `${quantity} dona mahsulot qabul qilindi` 
+      : `Принято ${quantity} единиц товара`);
       
-      // Refresh notifications after product arrival (stock increased)
-      fetchLowStockNotifications();
-      // Refresh dashboard stats
-      fetchDashboardStats();
-      
-      toast.success(language === 'uz' 
-        ? `${arrival.quantity} dona mahsulot qabul qilindi` 
-        : `Принято ${arrival.quantity} единиц товара`);
-        
-    } catch (error) {
-      console.error('Failed to add product arrival:', error);
-      toast.error(language === 'uz' 
-        ? 'Mahsulot qabul qilishda xatolik yuz berdi' 
-        : 'Ошибка при приеме товара');
-      throw error;
-    }
-  };
+  } catch (error) {
+    console.error('❌ Failed to add product arrival:', error);
+    toast.error(language === 'uz' 
+      ? 'Mahsulot qabul qilishda xatolik yuz berdi' 
+      : 'Ошибка при приеме товара');
+    throw error;
+  }
+};
 
   // ============== Customer Transaction Functions ==============
 
@@ -1773,20 +1825,42 @@ const getCustomerById = useCallback(async (id: number): Promise<Customer | null>
     }
   }, [user]);
 
-  // Fetch products, customers, users after categories are loaded - only once
-  useEffect(() => {
-    if (user && categories.length > 0) {
-      if (!hasFetchedProducts.current) {
-        fetchProducts();
-      }
-      if (!hasFetchedCustomers.current) {
-        fetchCustomers();
-      }
-      if (!hasFetchedUsers.current) {
-        fetchUsers();
-      }
+  // In your AppProvider, update this useEffect:
+
+useEffect(() => {
+  if (user) {
+    // Always fetch products if we haven't fetched them yet
+    if (!hasFetchedProducts.current) {
+      console.log('Fetching products...');
+      fetchProducts().then(() => {
+        hasFetchedProducts.current = true;
+      });
     }
-  }, [user, categories]);
+    
+    // Fetch customers if not fetched
+    if (!hasFetchedCustomers.current) {
+      console.log('Fetching customers...');
+      fetchCustomers().then(() => {
+        hasFetchedCustomers.current = true;
+      });
+    }
+    
+    // Fetch users if not fetched
+    if (!hasFetchedUsers.current) {
+      console.log('Fetching users...');
+      fetchUsers().then(() => {
+        hasFetchedUsers.current = true;
+      });
+    }
+  }
+}, [user, fetchProducts, fetchCustomers, fetchUsers]); // Add dependencies here
+useEffect(() => {
+  if (user && categories.length > 0 && hasFetchedProducts.current) {
+    // If categories changed and we already fetched products, refresh them
+    console.log('Categories changed, refreshing products...');
+    fetchProducts();
+  }
+}, [categories, user]);
 
   // Set theme class on body
   useEffect(() => {
@@ -1832,6 +1906,10 @@ const getCustomerById = useCallback(async (id: number): Promise<Customer | null>
     thicknesses,
     orders,
     
+    qualities,
+    isFetchingQualities,
+    fetchQualities,
+
     // Customer stats
     customerStats,
     isFetchingCustomerStats,

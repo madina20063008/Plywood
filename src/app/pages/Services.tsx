@@ -7,10 +7,10 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { Scissors, Ruler, PlusCircle, Trash2, TrendingUp, DollarSign, Edit2 } from 'lucide-react';
+import { Scissors, Ruler, PlusCircle, Trash2, TrendingUp, DollarSign, Edit2, Loader2, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
@@ -19,6 +19,7 @@ import {
   thicknessApi,
 } from '../../lib/api';
 import { ApiCutting, ApiBanding, ApiThickness } from '../../lib/types';
+import { format } from 'date-fns';
 
 interface IncomeStats {
   total_cutting_income: number;
@@ -27,6 +28,11 @@ interface IncomeStats {
   today_banding_income: number;
   total_income: number;
   today_income: number;
+}
+
+interface CuttingForm {
+  numberOfBoards: number;
+  pricePerCut: number;
 }
 
 export const Services: React.FC = () => {
@@ -52,6 +58,8 @@ export const Services: React.FC = () => {
   const [isLoadingBandings, setIsLoadingBandings] = useState(false);
   const [isLoadingThicknesses, setIsLoadingThicknesses] = useState(false);
   const [isLoadingIncome, setIsLoadingIncome] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   // Dialog states
   const [isCuttingDialogOpen, setIsCuttingDialogOpen] = useState(false);
@@ -61,11 +69,13 @@ export const Services: React.FC = () => {
   const [isEditBandingDialogOpen, setIsEditBandingDialogOpen] = useState(false);
   const [isEditThicknessDialogOpen, setIsEditThicknessDialogOpen] = useState(false);
 
+  // Selected item for edit
+  const [selectedCutting, setSelectedCutting] = useState<ApiCutting | null>(null);
+
   // Form states for create
-  const [newCutting, setNewCutting] = useState({
-    count: '',
-    price: '',
-    total_price: ''
+  const [cuttingForm, setCuttingForm] = useState<CuttingForm>({
+    numberOfBoards: 1,
+    pricePerCut: 20000
   });
 
   const [newBanding, setNewBanding] = useState({
@@ -82,9 +92,8 @@ export const Services: React.FC = () => {
   // Form states for edit
   const [editCutting, setEditCutting] = useState<{
     id: number;
-    count: string;
-    price: string;
-    total_price: string;
+    numberOfBoards: number;
+    pricePerCut: number;
   } | null>(null);
 
   const [editBanding, setEditBanding] = useState<{
@@ -101,6 +110,28 @@ export const Services: React.FC = () => {
   } | null>(null);
 
   const t = (key: string) => getTranslation(language, key as any);
+
+  // Format date function
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return '-';
+    try {
+      const date = new Date(dateString);
+      return format(date, 'dd.MM.yyyy');
+    } catch (error) {
+      return '-';
+    }
+  };
+
+  // Format date with time
+  const formatDateTime = (dateString: string | undefined) => {
+    if (!dateString) return '-';
+    try {
+      const date = new Date(dateString);
+      return format(date, 'dd.MM.yyyy HH:mm');
+    } catch (error) {
+      return '-';
+    }
+  };
 
   // Fetch all data
   const fetchIncomeStats = async () => {
@@ -176,23 +207,79 @@ export const Services: React.FC = () => {
     }
   }, [user]);
 
+  // Reset form when dialog opens/closes
+  useEffect(() => {
+    if (!isCuttingDialogOpen) {
+      setCuttingForm({ numberOfBoards: 1, pricePerCut: 20000 });
+    }
+  }, [isCuttingDialogOpen]);
+
+  useEffect(() => {
+    if (!isEditCuttingDialogOpen) {
+      setEditCutting(null);
+      setSelectedCutting(null);
+    }
+  }, [isEditCuttingDialogOpen]);
+
   // Create handlers
   const handleCreateCutting = async () => {
     if (!user) return;
+    setIsAdding(true);
     try {
+      const totalPrice = cuttingForm.numberOfBoards * cuttingForm.pricePerCut;
+      
       const data = await cuttingApi.create({
-        count: parseInt(newCutting.count) || 0,
-        price: newCutting.price,
-        total_price: newCutting.total_price
+        count: cuttingForm.numberOfBoards,
+        price: cuttingForm.pricePerCut.toString(),
+        total_price: totalPrice.toString()
       });
+      
       setCuttings(prev => [data, ...prev]);
       setIsCuttingDialogOpen(false);
-      setNewCutting({ count: '', price: '', total_price: '' });
       fetchIncomeStats();
+      
       toast.success(language === 'uz' ? 'Kesish xizmati qo\'shildi' : 'Услуга распила добавлена');
     } catch (error) {
       console.error('Failed to create cutting:', error);
       toast.error(language === 'uz' ? 'Xatolik yuz berdi' : 'Произошла ошибка');
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  // Update handlers
+  const handleOpenEditCutting = (cutting: ApiCutting) => {
+    setSelectedCutting(cutting);
+    setEditCutting({
+      id: cutting.id,
+      numberOfBoards: cutting.count,
+      pricePerCut: parseFloat(cutting.price)
+    });
+    setIsEditCuttingDialogOpen(true);
+  };
+
+  const handleUpdateCutting = async () => {
+    if (!user || !editCutting) return;
+    setIsUpdating(true);
+    try {
+      const totalPrice = editCutting.numberOfBoards * editCutting.pricePerCut;
+      
+      const updatedData = await cuttingApi.update(editCutting.id, {
+        count: editCutting.numberOfBoards,
+        price: editCutting.pricePerCut.toString(),
+        total_price: totalPrice.toString()
+      });
+      
+      setCuttings(prev => prev.map(c => c.id === editCutting.id ? updatedData : c));
+      setIsEditCuttingDialogOpen(false);
+      fetchIncomeStats();
+      
+      toast.success(language === 'uz' ? 'Kesish xizmati yangilandi' : 'Услуга распила обновлена');
+    } catch (error) {
+      console.error('Failed to update cutting:', error);
+      toast.error(language === 'uz' ? 'Xatolik yuz berdi' : 'Произошла ошибка');
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -230,37 +317,6 @@ export const Services: React.FC = () => {
       toast.success(language === 'uz' ? 'Qalinlik qo\'shildi' : 'Толщина добавлена');
     } catch (error) {
       console.error('Failed to create thickness:', error);
-      toast.error(language === 'uz' ? 'Xatolik yuz berdi' : 'Произошла ошибка');
-    }
-  };
-
-  // Update handlers
-  const handleOpenEditCutting = (cutting: ApiCutting) => {
-    setEditCutting({
-      id: cutting.id,
-      count: cutting.count.toString(),
-      price: cutting.price,
-      total_price: cutting.total_price
-    });
-    setIsEditCuttingDialogOpen(true);
-  };
-
-  const handleUpdateCutting = async () => {
-    if (!user || !editCutting) return;
-    try {
-      const updatedData = await cuttingApi.update(editCutting.id, {
-        count: parseInt(editCutting.count) || 0,
-        price: editCutting.price,
-        total_price: editCutting.total_price
-      });
-      
-      setCuttings(prev => prev.map(c => c.id === editCutting.id ? updatedData : c));
-      setIsEditCuttingDialogOpen(false);
-      setEditCutting(null);
-      fetchIncomeStats();
-      toast.success(language === 'uz' ? 'Kesish xizmati yangilandi' : 'Услуга распила обновлена');
-    } catch (error) {
-      console.error('Failed to update cutting:', error);
       toast.error(language === 'uz' ? 'Xatolik yuz berdi' : 'Произошла ошибка');
     }
   };
@@ -379,6 +435,11 @@ export const Services: React.FC = () => {
     return isNaN(num) ? 0 : num;
   };
 
+  const parseNumericInput = (value: string): number => {
+    const num = parseFloat(value.replace(/[^0-9.-]/g, ''));
+    return isNaN(num) ? 0 : num;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -457,25 +518,26 @@ export const Services: React.FC = () => {
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <div className="w-full overflow-x-auto pb-2 scrollbar-hide">
-    <TabsList className="inline-flex w-max min-w-full sm:w-auto">
-      <TabsTrigger value="cutting" className="flex items-center gap-2 px-4 py-2 whitespace-nowrap">
-        <Scissors className="h-4 w-4" />
-        <span className="text-sm">{language === 'uz' ? 'Kesish xizmatlari' : 'Услуги распила'}</span>
-      </TabsTrigger>
-      <TabsTrigger value="banding" className="flex items-center gap-2 px-4 py-2 whitespace-nowrap">
-        <Ruler className="h-4 w-4" />
-        <span className="text-sm">{language === 'uz' ? 'Kromkalash xizmatlari' : 'Услуги кромкования'}</span>
-      </TabsTrigger>
-      <TabsTrigger value="thickness" className="flex items-center gap-2 px-4 py-2 whitespace-nowrap">
-        <span className="h-4 w-4 text-sm">📏</span>
-        <span className="text-sm">{language === 'uz' ? 'Qalinliklar' : 'Толщины'}</span>
-      </TabsTrigger>
-    </TabsList>
-  </div>
+          <TabsList className="inline-flex w-max min-w-full sm:w-auto">
+            <TabsTrigger value="cutting" className="flex items-center gap-2 px-4 py-2 whitespace-nowrap">
+              <Scissors className="h-4 w-4" />
+              <span className="text-sm">{language === 'uz' ? 'Kesish xizmatlari' : 'Услуги распила'}</span>
+            </TabsTrigger>
+            <TabsTrigger value="banding" className="flex items-center gap-2 px-4 py-2 whitespace-nowrap">
+              <Ruler className="h-4 w-4" />
+              <span className="text-sm">{language === 'uz' ? 'Kromkalash xizmatlari' : 'Услуги кромкования'}</span>
+            </TabsTrigger>
+            <TabsTrigger value="thickness" className="flex items-center gap-2 px-4 py-2 whitespace-nowrap">
+              <span className="h-4 w-4 text-sm">📏</span>
+              <span className="text-sm">{language === 'uz' ? 'Qalinliklar' : 'Толщины'}</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* Cutting Tab */}
         <TabsContent value="cutting" className="space-y-4">
           <div className="flex justify-end">
+            {/* Add Cutting Dialog */}
             <Dialog open={isCuttingDialogOpen} onOpenChange={setIsCuttingDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="flex items-center gap-2">
@@ -483,41 +545,69 @@ export const Services: React.FC = () => {
                   {language === 'uz' ? 'Kesish xizmati qo\'shish' : 'Добавить услугу распила'}
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="w-[95vw] max-w-md mx-auto">
                 <DialogHeader>
-                  <DialogTitle>
+                  <DialogTitle className="text-lg">
                     {language === 'uz' ? 'Yangi kesish xizmati' : 'Новая услуга распила'}
                   </DialogTitle>
+                  <DialogDescription className="text-sm">
+                    {language === 'uz' 
+                      ? 'Kesish xizmati parametrlarini kiriting' 
+                      : 'Введите параметры услуги резки'}
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label>{language === 'uz' ? 'Soni' : 'Количество'}</Label>
+                    <Label className="text-sm">{language === 'uz' ? 'Soni' : 'Количество'}</Label>
                     <Input
                       type="number"
-                      value={newCutting.count}
-                      onChange={(e) => setNewCutting({...newCutting, count: e.target.value})}
-                      placeholder="10"
+                      min="1"
+                      value={cuttingForm.numberOfBoards || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCuttingForm({ 
+                          ...cuttingForm, 
+                          numberOfBoards: val === '' ? 1 : Math.max(1, parseNumericInput(val))
+                        });
+                      }}
+                      className="text-sm"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>{language === 'uz' ? 'Narxi' : 'Цена'}</Label>
+                    <Label className="text-sm">{language === 'uz' ? 'Narxi (UZS)' : 'Цена (UZS)'}</Label>
                     <Input
-                      type="text"
-                      value={newCutting.price}
-                      onChange={(e) => setNewCutting({...newCutting, price: e.target.value})}
-                      placeholder="5000"
+                      type="number"
+                      min="1"
+                      value={cuttingForm.pricePerCut || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCuttingForm({ 
+                          ...cuttingForm, 
+                          pricePerCut: val === '' ? 20000 : Math.max(1, parseNumericInput(val))
+                        });
+                      }}
+                      className="text-sm"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>{language === 'uz' ? 'Jami summa' : 'Общая сумма'}</Label>
-                    <Input
-                      type="text"
-                      value={newCutting.total_price}
-                      onChange={(e) => setNewCutting({...newCutting, total_price: e.target.value})}
-                      placeholder="50000"
-                    />
+                  
+                  {/* Total Price Display */}
+                  <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
+                    <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                      {language === 'uz' ? 'Jami summa' : 'Общая сумма'}
+                    </p>
+                    <p className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400 break-all">
+                      {(cuttingForm.numberOfBoards * cuttingForm.pricePerCut).toLocaleString()} UZS
+                    </p>
                   </div>
-                  <Button onClick={handleCreateCutting} className="w-full">
+
+                  <Button 
+                    className="w-full" 
+                    onClick={handleCreateCutting}
+                    disabled={isAdding}
+                  >
+                    {isAdding ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
                     {language === 'uz' ? 'Qo\'shish' : 'Добавить'}
                   </Button>
                 </div>
@@ -526,42 +616,70 @@ export const Services: React.FC = () => {
 
             {/* Edit Cutting Dialog */}
             <Dialog open={isEditCuttingDialogOpen} onOpenChange={setIsEditCuttingDialogOpen}>
-              <DialogContent>
+              <DialogContent className="w-[95vw] max-w-md mx-auto">
                 <DialogHeader>
-                  <DialogTitle>
+                  <DialogTitle className="text-lg">
                     {language === 'uz' ? 'Kesish xizmatini tahrirlash' : 'Редактировать услугу распила'}
                   </DialogTitle>
+                  <DialogDescription className="text-sm">
+                    {language === 'uz' 
+                      ? 'Kesish xizmati parametrlarini o\'zgartiring' 
+                      : 'Измените параметры услуги резки'}
+                  </DialogDescription>
                 </DialogHeader>
                 {editCutting && (
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
-                      <Label>{language === 'uz' ? 'Soni' : 'Количество'}</Label>
+                      <Label className="text-sm">{language === 'uz' ? 'Soni' : 'Количество'}</Label>
                       <Input
                         type="number"
-                        value={editCutting.count}
-                        onChange={(e) => setEditCutting({...editCutting, count: e.target.value})}
-                        placeholder="10"
+                        min="1"
+                        value={editCutting.numberOfBoards || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditCutting({ 
+                            ...editCutting, 
+                            numberOfBoards: val === '' ? 1 : Math.max(1, parseNumericInput(val))
+                          });
+                        }}
+                        className="text-sm"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{language === 'uz' ? 'Narxi' : 'Цена'}</Label>
+                      <Label className="text-sm">{language === 'uz' ? 'Narxi (UZS)' : 'Цена (UZS)'}</Label>
                       <Input
-                        type="text"
-                        value={editCutting.price}
-                        onChange={(e) => setEditCutting({...editCutting, price: e.target.value})}
-                        placeholder="5000"
+                        type="number"
+                        min="1"
+                        value={editCutting.pricePerCut || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditCutting({ 
+                            ...editCutting, 
+                            pricePerCut: val === '' ? 20000 : Math.max(1, parseNumericInput(val))
+                          });
+                        }}
+                        className="text-sm"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label>{language === 'uz' ? 'Jami summa' : 'Общая сумма'}</Label>
-                      <Input
-                        type="text"
-                        value={editCutting.total_price}
-                        onChange={(e) => setEditCutting({...editCutting, total_price: e.target.value})}
-                        placeholder="50000"
-                      />
+
+                    {/* Total Price Display for Edit */}
+                    <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                        {language === 'uz' ? 'Jami summa' : 'Общая сумма'}
+                      </p>
+                      <p className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400 break-all">
+                        {(editCutting.numberOfBoards * editCutting.pricePerCut).toLocaleString()} UZS
+                      </p>
                     </div>
-                    <Button onClick={handleUpdateCutting} className="w-full">
+
+                    <Button 
+                      className="w-full" 
+                      onClick={handleUpdateCutting}
+                      disabled={isUpdating}
+                    >
+                      {isUpdating ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
                       {language === 'uz' ? 'Yangilash' : 'Обновить'}
                     </Button>
                   </div>
@@ -579,6 +697,7 @@ export const Services: React.FC = () => {
                     <TableHead>{language === 'uz' ? 'Soni' : 'Количество'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Narxi' : 'Цена'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Jami summa' : 'Общая сумма'}</TableHead>
+                    <TableHead>{language === 'uz' ? 'Sana' : 'Дата'}</TableHead>
                     <TableHead className="text-right">{language === 'uz' ? 'Amallar' : 'Действия'}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -592,6 +711,12 @@ export const Services: React.FC = () => {
                         <Badge variant="secondary">
                           {parseNumber(cutting.total_price).toLocaleString()} UZS
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+                          <Calendar className="h-3 w-3" />
+                          {formatDate(cutting.created_at)}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -617,7 +742,7 @@ export const Services: React.FC = () => {
                   ))}
                   {cuttings.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                         {language === 'uz' 
                           ? 'Kesish xizmatlari mavjud emas' 
                           : 'Услуги распила отсутствуют'}
@@ -630,7 +755,7 @@ export const Services: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Banding Tab */}
+        {/* Banding Tab - with created_at */}
         <TabsContent value="banding" className="space-y-4">
           <div className="flex justify-end gap-2">
             <Dialog open={isThicknessDialogOpen} onOpenChange={setIsThicknessDialogOpen}>
@@ -795,6 +920,7 @@ export const Services: React.FC = () => {
                     <TableHead>{language === 'uz' ? 'Balandligi (mm)' : 'Высота (мм)'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Chiziqli metr' : 'Пог. метры'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Jami summa' : 'Общая сумма'}</TableHead>
+                    <TableHead>{language === 'uz' ? 'Sana' : 'Дата'}</TableHead>
                     <TableHead className="text-right">{language === 'uz' ? 'Amallar' : 'Действия'}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -829,6 +955,13 @@ export const Services: React.FC = () => {
                             {parseNumber(banding.total_price).toLocaleString()} UZS
                           </Badge>
                         </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(banding.created_at)}
+                            
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button
@@ -854,7 +987,7 @@ export const Services: React.FC = () => {
                   })}
                   {bandings.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                         {language === 'uz' 
                           ? 'Kromkalash xizmatlari mavjud emas' 
                           : 'Услуги кромкования отсутствуют'}
