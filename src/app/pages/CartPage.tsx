@@ -505,19 +505,30 @@ export const CartPage: React.FC = () => {
         height: bandingItem.edgeBandingService.height.toString(),
       } : undefined;
 
-      let coveredAmount: string;
+      // Handle discount - send percentage if discount_type is 'p', otherwise send amount
+      let discountValue: string;
+      if (discountType === 'p') {
+        // Send the percentage value (e.g., "10" for 10%)
+        discountValue = discount.toString();
+      } else {
+        // Send the amount value
+        discountValue = discountAmount.toString();
+      }
+
+      // Handle covered_amount - only send for nasiya payment
+      let coveredAmount: string | undefined;
       if (paymentMethod === 'nasiya') {
         coveredAmount = amountPaid.toString();
-      } else {
-        coveredAmount = total.toString();
       }
+      // For non-nasiya payments, don't include covered_amount at all
+      // The API will handle it based on payment method
 
       const orderData: CreateOrderData = {
         items,
         payment_method: paymentMethod,
-        discount: discountAmount.toString(),
+        discount: discountValue,
         discount_type: discountType,
-        covered_amount: coveredAmount,
+        ...(coveredAmount !== undefined && { covered_amount: coveredAmount }),
         ...(selectedCustomerId !== 'anonymous' && { customer_id: parseInt(selectedCustomerId) }),
         ...(cutting && { cutting }),
         ...(banding && { banding }),

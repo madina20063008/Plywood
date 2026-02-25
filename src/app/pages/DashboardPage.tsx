@@ -228,39 +228,6 @@ export const DashboardPage: React.FC = () => {
 
       {/* Charts Row 1 */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('salesTrend')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={analytics.revenueByDay}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
-                <XAxis 
-                  dataKey="date" 
-                  className="text-gray-600 dark:text-gray-400"
-                />
-                <YAxis className="text-gray-600 dark:text-gray-400" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'var(--background)', 
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px'
-                  }}
-                  formatter={(value: number) => `${value.toLocaleString()} UZS`}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="revenue" 
-                  stroke="#3B82F6" 
-                  strokeWidth={2}
-                  dot={{ fill: '#3B82F6', r: 4 }}
-                  name={language === 'uz' ? 'Daromad' : 'Выручка'}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
 
         <Card>
           <CardHeader>
@@ -337,10 +304,6 @@ export const DashboardPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Charts Row 2 */}
-      <div className="grid gap-6 lg:grid-cols-1">
         <Card>
           <CardHeader>
             <CardTitle>{t('topSellingProducts')}</CardTitle>
@@ -376,6 +339,11 @@ export const DashboardPage: React.FC = () => {
             </ResponsiveContainer>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Charts Row 2 */}
+      <div className="grid gap-6 lg:grid-cols-1">
+        
       </div>
     </div>
   );

@@ -289,24 +289,19 @@ export const ProductsPage: React.FC = () => {
                 
                 return (
                   <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                    <div className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
-                      <img
-                        src={product.imageUrl || defaultImage}
-                        alt={product.name}
-                        className="h-full w-full object-cover"
-                      />
+                    <div className="h-[150px] relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
                       <div 
-                        className="absolute top-3 right-3 h-10 w-10 rounded-full border-2 border-white shadow-lg"
+                        className="h-[100%] w-[100%] object-cover"
                         style={{ backgroundColor: product.color }}
                       />
                     </div>
-                    <CardHeader className="pb-3">
-                      <div className="space-y-2">
+                    <CardHeader className="">
+                      <div className="">
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="font-semibold text-lg leading-tight">{product.name}</h3>
                           <Badge variant="secondary">{product.category}</Badge>
                         </div>
-                        <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                        <div className=" text-sm text-gray-600 dark:text-gray-400">
                           <p>{product.width} × {product.height} mm</p>
                           <p>{t('thickness')}: {product.thickness} mm</p>
                           <p>{t('quality')}: {qualityName || getQualityTranslation(product.quality)}</p>
