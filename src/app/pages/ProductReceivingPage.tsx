@@ -91,17 +91,21 @@ export const ProductReceivingPage: React.FC = () => {
 
   // Format exchange rate properly
   const formatExchangeRate = (rate: string | null | undefined): string => {
-    if (!rate) return '-';
+    if (!rate) return "-";
     const numRate = parseFloat(rate);
-    if (isNaN(numRate)) return '-';
+    if (isNaN(numRate)) return "-";
     return `${numRate.toLocaleString()} UZS/USD`;
   };
 
   // Calculate investment with proper currency
-  const calculateInvestment = (price: string | number, quantity: number, priceType: "dollar" | "sum"): string => {
-    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+  const calculateInvestment = (
+    price: string | number,
+    quantity: number,
+    priceType: "dollar" | "sum",
+  ): string => {
+    const numPrice = typeof price === "string" ? parseFloat(price) : price;
     const total = numPrice * quantity;
-    
+
     if (priceType === "dollar") {
       return `$${total.toFixed(2)}`;
     }
@@ -110,7 +114,7 @@ export const ProductReceivingPage: React.FC = () => {
 
   // Parse price from string to number
   const parsePrice = (price: string | number): number => {
-    if (typeof price === 'string') {
+    if (typeof price === "string") {
       return parseFloat(price);
     }
     return price;
@@ -166,31 +170,34 @@ export const ProductReceivingPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedProductId || !selectedProduct) {
-      toast.error(language === 'uz' 
-        ? 'Iltimos, mahsulotni tanlang' 
-        : 'Пожалуйста, выберите продукт'
+      toast.error(
+        language === "uz"
+          ? "Iltimos, mahsulotni tanlang"
+          : "Пожалуйста, выберите продукт",
       );
       return;
     }
 
     // Parse quantity as integer
     const quantity = parseInt(formData.quantity.toString());
-    console.log('Quantity to submit:', quantity);
-    
+    console.log("Quantity to submit:", quantity);
+
     if (quantity <= 0) {
-      toast.error(language === 'uz' 
-        ? 'Miqdor 0 dan katta bo\'lishi kerak' 
-        : 'Количество должно быть больше 0'
+      toast.error(
+        language === "uz"
+          ? "Miqdor 0 dan katta bo'lishi kerak"
+          : "Количество должно быть больше 0",
       );
       return;
     }
 
     if (formData.purchasePrice <= 0 || formData.sellingPrice <= 0) {
-      toast.error(language === 'uz' 
-        ? 'Narxlar 0 dan katta bo\'lishi kerak' 
-        : 'Цены должны быть больше 0'
+      toast.error(
+        language === "uz"
+          ? "Narxlar 0 dan katta bo'lishi kerak"
+          : "Цены должны быть больше 0",
       );
       return;
     }
@@ -198,10 +205,10 @@ export const ProductReceivingPage: React.FC = () => {
     setIsSubmitting(true);
     try {
       // Debug: check what priceType is being sent
-      console.log('Submitting with priceType:', formData.priceType);
-      console.log('Purchase price:', formData.purchasePrice);
-      console.log('Selling price:', formData.sellingPrice);
-      
+      console.log("Submitting with priceType:", formData.priceType);
+      console.log("Purchase price:", formData.purchasePrice);
+      console.log("Selling price:", formData.sellingPrice);
+
       // Call API through context - send exactly what user entered
       await addProductArrival({
         productId: selectedProductId,
@@ -214,31 +221,36 @@ export const ProductReceivingPage: React.FC = () => {
         totalInvestment: formData.purchasePrice * quantity,
         arrivalDate: formData.arrivalDate,
         notes: formData.notes,
-        receivedBy: user?.full_name || 'Unknown',
+        receivedBy: user?.full_name || "Unknown",
       });
 
       // Update product with new stock and prices
       await updateProduct(selectedProductId, {
         stockQuantity: selectedProduct.stockQuantity + quantity,
-        purchasePrice: formData.priceType === "sum" ? formData.purchasePrice : 0,
+        purchasePrice:
+          formData.priceType === "sum" ? formData.purchasePrice : 0,
         unitPrice: formData.priceType === "sum" ? formData.sellingPrice : 0,
-        purchasePriceDollar: formData.priceType === "dollar" ? formData.purchasePrice : 0,
-        unitPriceDollar: formData.priceType === "dollar" ? formData.sellingPrice : 0,
+        purchasePriceDollar:
+          formData.priceType === "dollar" ? formData.purchasePrice : 0,
+        unitPriceDollar:
+          formData.priceType === "dollar" ? formData.sellingPrice : 0,
         arrival_date: formData.arrivalDate,
         lastPriceType: formData.priceType, // Save last used price type
       });
 
       resetForm();
-      
-      toast.success(language === 'uz' 
-        ? `Mahsulot muvaffaqiyatli qabul qilindi (${quantity} dona)` 
-        : `Товар успешно принят (${quantity} шт.)`
+
+      toast.success(
+        language === "uz"
+          ? `Mahsulot muvaffaqiyatli qabul qilindi (${quantity} dona)`
+          : `Товар успешно принят (${quantity} шт.)`,
       );
     } catch (error) {
-      console.error('Error submitting acceptance:', error);
-      toast.error(language === 'uz' 
-        ? 'Qabul qilishda xatolik yuz berdi' 
-        : 'Ошибка при приеме товара'
+      console.error("Error submitting acceptance:", error);
+      toast.error(
+        language === "uz"
+          ? "Qabul qilishda xatolik yuz berdi"
+          : "Ошибка при приеме товара",
       );
     } finally {
       setIsSubmitting(false);
@@ -456,7 +468,13 @@ export const ProductReceivingPage: React.FC = () => {
                   className="flex gap-4 mt-2"
                   disabled={!selectedProductId || isSubmitting}
                 >
-                  <div className="flex items-center space-x-2">
+                  <div
+                    className={`flex items-center space-x-2 p-2 rounded-md transition-colors ${
+                      formData.priceType === "sum"
+                        ? "bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700"
+                        : ""
+                    }`}
+                  >
                     <RadioGroupItem value="sum" id="sum" />
                     <Label
                       htmlFor="sum"
@@ -466,7 +484,14 @@ export const ProductReceivingPage: React.FC = () => {
                       UZS (So'm)
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2">
+
+                  <div
+                    className={`flex items-center space-x-2 p-2 rounded-md transition-colors ${
+                      formData.priceType === "dollar"
+                        ? "bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700"
+                        : ""
+                    }`}
+                  >
                     <RadioGroupItem value="dollar" id="dollar" />
                     <Label
                       htmlFor="dollar"
@@ -868,7 +893,9 @@ export const ProductReceivingPage: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <History className="h-5 w-5" />
-            {language === 'uz' ? 'Qabul qilish tarixi' : 'История приёма товаров'}
+            {language === "uz"
+              ? "Qabul qilish tarixi"
+              : "История приёма товаров"}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -876,9 +903,9 @@ export const ProductReceivingPage: React.FC = () => {
             <div className="text-center py-8">
               <Package className="h-12 w-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
               <p className="text-gray-500 dark:text-gray-400">
-                {language === 'uz' 
-                  ? 'Hozircha qabul qilish tarixi yo\'q' 
-                  : 'Пока нет истории приёма товаров'}
+                {language === "uz"
+                  ? "Hozircha qabul qilish tarixi yo'q"
+                  : "Пока нет истории приёма товаров"}
               </p>
             </div>
           ) : (
@@ -886,17 +913,37 @@ export const ProductReceivingPage: React.FC = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{language === 'uz' ? 'Sana' : 'Дата'}</TableHead>
-                    <TableHead>{language === 'uz' ? 'Mahsulot' : 'Продукт'}</TableHead>
-                    <TableHead>{language === 'uz' ? 'Kategoriya' : 'Категория'}</TableHead>
-                    <TableHead className="text-right">{language === 'uz' ? 'Miqdor' : 'Количество'}</TableHead>
-                    <TableHead className="text-right">{language === 'uz' ? 'Kelish narxi' : 'Цена закупки'}</TableHead>
-                    <TableHead className="text-right">{language === 'uz' ? 'Sotish narxi' : 'Цена продажи'}</TableHead>
-                    <TableHead className="text-right">{language === 'uz' ? 'Investitsiya' : 'Инвестиции'}</TableHead>
-                    <TableHead>{language === 'uz' ? 'Valyuta' : 'Валюта'}</TableHead>
-                    <TableHead className="text-right">{language === 'uz' ? 'Kurs' : 'Курс'}</TableHead>
-                    <TableHead>{language === 'uz' ? 'Qabul qildi' : 'Принял'}</TableHead>
-                    <TableHead>{language === 'uz' ? 'Izohlar' : 'Примечания'}</TableHead>
+                    <TableHead>{language === "uz" ? "Sana" : "Дата"}</TableHead>
+                    <TableHead>
+                      {language === "uz" ? "Mahsulot" : "Продукт"}
+                    </TableHead>
+                    <TableHead>
+                      {language === "uz" ? "Kategoriya" : "Категория"}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {language === "uz" ? "Miqdor" : "Количество"}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {language === "uz" ? "Kelish narxi" : "Цена закупки"}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {language === "uz" ? "Sotish narxi" : "Цена продажи"}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {language === "uz" ? "Investitsiya" : "Инвестиции"}
+                    </TableHead>
+                    <TableHead>
+                      {language === "uz" ? "Valyuta" : "Валюта"}
+                    </TableHead>
+                    <TableHead className="text-right">
+                      {language === "uz" ? "Kurs" : "Курс"}
+                    </TableHead>
+                    <TableHead>
+                      {language === "uz" ? "Qabul qildi" : "Принял"}
+                    </TableHead>
+                    <TableHead>
+                      {language === "uz" ? "Izohlar" : "Примечания"}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -904,16 +951,17 @@ export const ProductReceivingPage: React.FC = () => {
                     // Parse prices from string to number
                     const purchasePrice = parsePrice(arrival.purchasePrice);
                     const sellingPrice = parsePrice(arrival.sellingPrice);
-                    
+
                     return (
                       <TableRow key={arrival.id}>
                         <TableCell className="font-medium">
-                          {format(new Date(arrival.arrivalDate), 'dd.MM.yyyy')}
+                          {format(new Date(arrival.arrivalDate), "dd.MM.yyyy")}
                         </TableCell>
                         <TableCell>{arrival.productName}</TableCell>
                         <TableCell>{t(arrival.category)}</TableCell>
                         <TableCell className="text-right">
-                          {arrival.quantity} {language === 'uz' ? 'dona' : 'шт.'}
+                          {arrival.quantity}{" "}
+                          {language === "uz" ? "dona" : "шт."}
                         </TableCell>
                         <TableCell className="text-right">
                           {formatPrice(purchasePrice, arrival.priceType)}
@@ -922,11 +970,21 @@ export const ProductReceivingPage: React.FC = () => {
                           {formatPrice(sellingPrice, arrival.priceType)}
                         </TableCell>
                         <TableCell className="text-right font-semibold">
-                          {calculateInvestment(purchasePrice, arrival.quantity, arrival.priceType)}
+                          {calculateInvestment(
+                            purchasePrice,
+                            arrival.quantity,
+                            arrival.priceType,
+                          )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={arrival.priceType === 'dollar' ? 'default' : 'outline'}>
-                            {arrival.priceType === 'dollar' ? 'USD' : 'UZS'}
+                          <Badge
+                            variant={
+                              arrival.priceType === "dollar"
+                                ? "default"
+                                : "outline"
+                            }
+                          >
+                            {arrival.priceType === "dollar" ? "USD" : "UZS"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right text-sm text-gray-600 dark:text-gray-400">
@@ -936,7 +994,7 @@ export const ProductReceivingPage: React.FC = () => {
                           {arrival.receivedBy}
                         </TableCell>
                         <TableCell className="text-sm text-gray-500">
-                          {arrival.notes || '-'}
+                          {arrival.notes || "-"}
                         </TableCell>
                       </TableRow>
                     );

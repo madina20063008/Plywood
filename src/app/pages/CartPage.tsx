@@ -9,7 +9,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../compone
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Separator } from '../components/ui/separator';
-import { Trash2, Plus, Scissors, Ruler, ShoppingBag, Receipt as ReceiptIcon, Loader2, Minus, User, UserCheck, CreditCard, Banknote, Landmark, Eye, Edit, XCircle, FileText } from 'lucide-react';
+import { Trash2, Plus, Scissors, Ruler, ShoppingBag, Receipt as ReceiptIcon, Loader2, Minus, User, UserCheck, CreditCard, Banknote, Landmark, Pencil, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 import { customerApi } from '../../lib/api';
@@ -43,17 +43,20 @@ export const CartPage: React.FC = () => {
   } = useApp();
   
   const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<ApiOrder | null>(null);
   const [isCuttingDialogOpen, setIsCuttingDialogOpen] = useState(false);
   const [isEdgeBandingDialogOpen, setIsEdgeBandingDialogOpen] = useState(false);
   const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
+  const [isEditCuttingDialogOpen, setIsEditCuttingDialogOpen] = useState(false);
+  const [isEditEdgeBandingDialogOpen, setIsEditEdgeBandingDialogOpen] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<ApiOrder | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('anonymous');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [removingItems, setRemovingItems] = useState<Record<string, boolean>>({});
+  const [removingServices, setRemovingServices] = useState<Record<string, boolean>>({});
   const [updatingQuantities, setUpdatingQuantities] = useState<Record<string, boolean>>({});
   const [isAddingService, setIsAddingService] = useState<Record<string, boolean>>({});
+  const [isEditingService, setIsEditingService] = useState<Record<string, boolean>>({});
   const [localCart, setLocalCart] = useState<CartItem[]>([]);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 0);
   const navigate = useNavigate();
@@ -127,7 +130,7 @@ export const CartPage: React.FC = () => {
                 id: foundCustomer.id.toString(),
                 name: foundCustomer.full_name,
                 phone: foundCustomer.phone_number || '',
-                address: foundCustomer.address,
+                address: foundCustomer.location || '',
                 debt: foundCustomer.debt || 0
               };
               setSelectedCustomer(customer);
@@ -231,6 +234,86 @@ export const CartPage: React.FC = () => {
     }
   };
 
+  const handleEditCutting = async () => {
+    if (!selectedItem) return;
+
+    if (cuttingForm.numberOfBoards <= 0) {
+      toast.error(language === 'uz' 
+        ? 'Kesish soni 0 dan katta bo\'lishi kerak' 
+        : 'Количество резки должно быть больше 0');
+      return;
+    }
+
+    if (cuttingForm.pricePerCut <= 0) {
+      toast.error(language === 'uz' 
+        ? 'Narx 0 dan katta bo\'lishi kerak' 
+        : 'Цена должна быть больше 0');
+      return;
+    }
+
+    const updatedCuttingService: CuttingService = {
+      id: selectedItem.cuttingService?.id || Date.now().toString(),
+      numberOfBoards: cuttingForm.numberOfBoards,
+      pricePerCut: cuttingForm.pricePerCut,
+      total: cuttingForm.numberOfBoards * cuttingForm.pricePerCut,
+    };
+    
+    setIsEditingService(prev => ({ ...prev, [selectedItem.id]: true }));
+    
+    try {
+      // Here you would call an API to update the cutting service
+      // await updateCuttingService(selectedItem.id, updatedCuttingService);
+      
+      const updatedCart = localCart.map(item => 
+        item.id === selectedItem.id 
+          ? { ...item, cuttingService: updatedCuttingService } 
+          : item
+      );
+      setLocalCart(updatedCart);
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+      
+      setIsEditCuttingDialogOpen(false);
+      toast.success(language === 'uz' 
+        ? 'Kesish xizmati yangilandi' 
+        : 'Услуга распила обновлена');
+    } catch (error: any) {
+      console.error('Failed to update cutting service:', error);
+      toast.error(language === 'uz' 
+        ? `Kesish xizmati yangilashda xatolik: ${error.message}` 
+        : `Ошибка при обновлении услуги распила: ${error.message}`);
+    } finally {
+      setIsEditingService(prev => ({ ...prev, [selectedItem.id]: false }));
+    }
+  };
+
+  const handleRemoveCutting = async (itemId: string) => {
+    setRemovingServices(prev => ({ ...prev, [itemId]: true }));
+    
+    try {
+      // Here you would call an API to remove the cutting service
+      // await removeCuttingService(itemId);
+      
+      const updatedCart = localCart.map(item => 
+        item.id === itemId 
+          ? { ...item, cuttingService: undefined } 
+          : item
+      );
+      setLocalCart(updatedCart);
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+      
+      toast.success(language === 'uz' 
+        ? 'Kesish xizmati o\'chirildi' 
+        : 'Услуга распила удалена');
+    } catch (error: any) {
+      console.error('Failed to remove cutting service:', error);
+      toast.error(language === 'uz' 
+        ? `Kesish xizmati o\'chirishda xatolik: ${error.message}` 
+        : `Ошибка при удалении услуги распила: ${error.message}`);
+    } finally {
+      setRemovingServices(prev => ({ ...prev, [itemId]: false }));
+    }
+  };
+
   const handleAddEdgeBanding = async () => {
     if (!selectedItem) return;
 
@@ -287,6 +370,94 @@ export const CartPage: React.FC = () => {
         : `Ошибка при добавлении услуги кромкования: ${error.message}`);
     } finally {
       setIsAddingService(prev => ({ ...prev, [selectedItem.id]: false }));
+    }
+  };
+
+  const handleEditEdgeBanding = async () => {
+    if (!selectedItem) return;
+
+    const selectedThickness = thicknesses.find(t => t.id === edgeBandingForm.thicknessId);
+    if (!selectedThickness) {
+      toast.error(language === 'uz' ? 'Qalinlik tanlang' : 'Выберите толщину');
+      return;
+    }
+
+    if (edgeBandingForm.width <= 0 || edgeBandingForm.height <= 0) {
+      toast.error(language === 'uz' 
+        ? 'O\'lchamlar 0 dan katta bo\'lishi kerak' 
+        : 'Размеры должны быть больше 0');
+      return;
+    }
+
+    const perimeter = 2 * (edgeBandingForm.width + edgeBandingForm.height);
+    const linearMeters = perimeter / 1000;
+    const pricePerMeter = parseFloat(selectedThickness.price);
+    const total = linearMeters * pricePerMeter;
+
+    const updatedEdgeBandingService: EdgeBandingService = {
+      id: selectedItem.edgeBandingService?.id || Date.now().toString(),
+      thickness: parseFloat(selectedThickness.size),
+      thicknessId: selectedThickness.id,
+      width: edgeBandingForm.width,
+      height: edgeBandingForm.height,
+      pricePerMeter: pricePerMeter,
+      linearMeters,
+      total,
+    };
+    
+    setIsEditingService(prev => ({ ...prev, [selectedItem.id]: true }));
+    
+    try {
+      // Here you would call an API to update the edge banding service
+      // await updateEdgeBandingService(selectedItem.id, updatedEdgeBandingService);
+      
+      const updatedCart = localCart.map(item => 
+        item.id === selectedItem.id 
+          ? { ...item, edgeBandingService: updatedEdgeBandingService } 
+          : item
+      );
+      setLocalCart(updatedCart);
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+      
+      setIsEditEdgeBandingDialogOpen(false);
+      toast.success(language === 'uz' 
+        ? 'Kromkalash xizmati yangilandi' 
+        : 'Услуга кромкования обновлена');
+    } catch (error: any) {
+      console.error('Failed to update edge banding service:', error);
+      toast.error(language === 'uz' 
+        ? `Kromkalash xizmati yangilashda xatolik: ${error.message}` 
+        : `Ошибка при обновлении услуги кромкования: ${error.message}`);
+    } finally {
+      setIsEditingService(prev => ({ ...prev, [selectedItem.id]: false }));
+    }
+  };
+
+  const handleRemoveEdgeBanding = async (itemId: string) => {
+    setRemovingServices(prev => ({ ...prev, [itemId]: true }));
+    
+    try {
+      // Here you would call an API to remove the edge banding service
+      // await removeEdgeBandingService(itemId);
+      
+      const updatedCart = localCart.map(item => 
+        item.id === itemId 
+          ? { ...item, edgeBandingService: undefined } 
+          : item
+      );
+      setLocalCart(updatedCart);
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+      
+      toast.success(language === 'uz' 
+        ? 'Kromkalash xizmati o\'chirildi' 
+        : 'Услуга кромкования удалена');
+    } catch (error: any) {
+      console.error('Failed to remove edge banding service:', error);
+      toast.error(language === 'uz' 
+        ? `Kromkalash xizmati o\'chirishda xatolik: ${error.message}` 
+        : `Ошибка при удалении услуги кромкования: ${error.message}`);
+    } finally {
+      setRemovingServices(prev => ({ ...prev, [itemId]: false }));
     }
   };
 
@@ -622,6 +793,8 @@ export const CartPage: React.FC = () => {
               const isRemoving = removingItems[item.id];
               const isUpdating = updatingQuantities[item.id];
               const isAdding = isAddingService[item.id];
+              const isRemovingService = removingServices[item.id];
+              const isEditing = isEditingService[item.id];
               
               return (
                 <Card key={item.id} className={isRemoving ? 'opacity-50' : ''}>
@@ -689,16 +862,23 @@ export const CartPage: React.FC = () => {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
+                          {/* Cutting Service Dialog - Add */}
                           <Dialog open={isCuttingDialogOpen && selectedItem?.id === item.id} onOpenChange={(open) => {
                             setIsCuttingDialogOpen(open);
-                            if (open) setSelectedItem(item);
+                            if (open) {
+                              setSelectedItem(item);
+                              setCuttingForm({
+                                numberOfBoards: 1,
+                                pricePerCut: 20000,
+                              });
+                            }
                           }}>
                             <DialogTrigger asChild>
-                              <Button variant="outline" size="sm" disabled={isRemoving || isAdding} className="text-xs sm:text-sm">
+                              <Button variant="outline" size="sm" disabled={isRemoving || isAdding || item.cuttingService} className="text-xs sm:text-sm">
                                 <Scissors className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                                 <span className="truncate max-w-[80px] sm:max-w-none">
                                   {item.cuttingService ? (
-                                    language === 'uz' ? 'Kesish' : 'Распил'
+                                    language === 'uz' ? 'Kesish mavjud' : 'Распил есть'
                                   ) : (
                                     t('addCutting')
                                   )}
@@ -777,6 +957,7 @@ export const CartPage: React.FC = () => {
                             </DialogContent>
                           </Dialog>
 
+                          {/* Edge Banding Service Dialog - Add */}
                           <Dialog open={isEdgeBandingDialogOpen && selectedItem?.id === item.id} onOpenChange={(open) => {
                             setIsEdgeBandingDialogOpen(open);
                             if (open) {
@@ -785,15 +966,16 @@ export const CartPage: React.FC = () => {
                                 ...edgeBandingForm,
                                 width: item.product.width,
                                 height: item.product.height,
+                                thicknessId: 0,
                               });
                             }
                           }}>
                             <DialogTrigger asChild>
-                              <Button variant="outline" size="sm" disabled={isRemoving || isAdding} className="text-xs sm:text-sm">
+                              <Button variant="outline" size="sm" disabled={isRemoving || isAdding || item.edgeBandingService} className="text-xs sm:text-sm">
                                 <Ruler className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                                 <span className="truncate max-w-[80px] sm:max-w-none">
                                   {item.edgeBandingService ? (
-                                    language === 'uz' ? 'Kromka' : 'Кромка'
+                                    language === 'uz' ? 'Kromka mavjud' : 'Кромка есть'
                                   ) : (
                                     t('addEdgeBanding')
                                   )}
@@ -918,18 +1100,105 @@ export const CartPage: React.FC = () => {
                           <div className="space-y-2 rounded-lg bg-gray-50 dark:bg-gray-800 p-3 text-xs sm:text-sm">
                             {item.cuttingService && (
                               <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
-                                <span className="text-gray-600 dark:text-gray-400">
-                                  {t('cuttingService')} ({item.cuttingService.numberOfBoards}×)
-                                </span>
-                                <span className="font-medium">{item.cuttingService.total.toLocaleString()} UZS</span>
+                                <div className="flex items-center gap-2">
+                                  <Scissors className="h-3 w-3 text-blue-600" />
+                                  <span className="text-gray-600 dark:text-gray-400">
+                                    {t('cuttingService')} ({item.cuttingService.numberOfBoards}×)
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{item.cuttingService.total.toLocaleString()} UZS</span>
+                                  
+                                  {/* Edit Cutting Service Button */}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-blue-600 hover:text-blue-700"
+                                    onClick={() => {
+                                      setSelectedItem(item);
+                                      setCuttingForm({
+                                        numberOfBoards: item.cuttingService!.numberOfBoards,
+                                        pricePerCut: item.cuttingService!.pricePerCut,
+                                      });
+                                      setIsEditCuttingDialogOpen(true);
+                                    }}
+                                    disabled={isRemovingService || isEditing}
+                                  >
+                                    {isEditing ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Pencil className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                  
+                                  {/* Remove Cutting Service Button */}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-red-600 hover:text-red-700"
+                                    onClick={() => handleRemoveCutting(item.id)}
+                                    disabled={isRemovingService || isEditing}
+                                  >
+                                    {isRemovingService ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <XCircle className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </div>
                               </div>
                             )}
+                            
                             {item.edgeBandingService && (
                               <div className="flex flex-col sm:flex-row sm:justify-between gap-1">
-                                <span className="text-gray-600 dark:text-gray-400">
-                                  {t('edgeBandingService')} ({item.edgeBandingService.linearMeters.toFixed(2)}{language === 'uz' ? 'м' : 'м'})
-                                </span>
-                                <span className="font-medium">{item.edgeBandingService.total.toLocaleString()} UZS</span>
+                                <div className="flex items-center gap-2">
+                                  <Ruler className="h-3 w-3 text-blue-600" />
+                                  <span className="text-gray-600 dark:text-gray-400">
+                                    {t('edgeBandingService')} ({item.edgeBandingService.linearMeters.toFixed(2)}{language === 'uz' ? 'м' : 'м'})
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{item.edgeBandingService.total.toLocaleString()} UZS</span>
+                                  
+                                  {/* Edit Edge Banding Service Button */}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-blue-600 hover:text-blue-700"
+                                    onClick={() => {
+                                      setSelectedItem(item);
+                                      setEdgeBandingForm({
+                                        thicknessId: item.edgeBandingService!.thicknessId,
+                                        width: item.edgeBandingService!.width,
+                                        height: item.edgeBandingService!.height,
+                                        pricePerMeter: item.edgeBandingService!.pricePerMeter,
+                                      });
+                                      setIsEditEdgeBandingDialogOpen(true);
+                                    }}
+                                    disabled={isRemovingService || isEditing}
+                                  >
+                                    {isEditing ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Pencil className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                  
+                                  {/* Remove Edge Banding Service Button */}
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-red-600 hover:text-red-700"
+                                    onClick={() => handleRemoveEdgeBanding(item.id)}
+                                    disabled={isRemovingService || isEditing}
+                                  >
+                                    {isRemovingService ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <XCircle className="h-3 w-3" />
+                                    )}
+                                  </Button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -948,6 +1217,217 @@ export const CartPage: React.FC = () => {
               );
             })}
           </div>
+
+          {/* Edit Cutting Service Dialog */}
+          <Dialog open={isEditCuttingDialogOpen} onOpenChange={setIsEditCuttingDialogOpen}>
+            <DialogContent className="w-[95vw] max-w-md mx-auto">
+              <DialogHeader>
+                <DialogTitle className="text-lg">
+                  {language === 'uz' ? 'Kesish xizmatini tahrirlash' : 'Редактировать услугу распила'}
+                </DialogTitle>
+                <DialogDescription className="text-sm">
+                  {language === 'uz' 
+                    ? 'Kesish xizmati parametrlarini o\'zgartiring' 
+                    : 'Измените параметры услуги резки'}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-sm">{t('numberOfBoards')}</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={cuttingForm.numberOfBoards || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCuttingForm({ 
+                        ...cuttingForm, 
+                        numberOfBoards: val === '' ? 0 : Math.max(1, parseNumericInput(val))
+                      });
+                    }}
+                    onBlur={() => {
+                      if (cuttingForm.numberOfBoards < 1) {
+                        setCuttingForm({ ...cuttingForm, numberOfBoards: 1 });
+                      }
+                    }}
+                    className="text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm">{t('pricePerCut')} (UZS)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={cuttingForm.pricePerCut || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCuttingForm({ 
+                        ...cuttingForm, 
+                        pricePerCut: val === '' ? 0 : Math.max(1, parseNumericInput(val))
+                      });
+                    }}
+                    onBlur={() => {
+                      if (cuttingForm.pricePerCut < 1) {
+                        setCuttingForm({ ...cuttingForm, pricePerCut: 20000 });
+                      }
+                    }}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
+                  <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">{t('total')}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400 break-all">
+                    {(cuttingForm.numberOfBoards * cuttingForm.pricePerCut).toLocaleString()} UZS
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline"
+                    className="flex-1" 
+                    onClick={() => setIsEditCuttingDialogOpen(false)}
+                  >
+                    {t('cancel')}
+                  </Button>
+                  <Button 
+                    className="flex-1" 
+                    onClick={handleEditCutting}
+                    disabled={isEditingService[selectedItem?.id || '']}
+                  >
+                    {isEditingService[selectedItem?.id || ''] ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    {language === 'uz' ? 'Saqlash' : 'Сохранить'}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Edit Edge Banding Service Dialog */}
+          <Dialog open={isEditEdgeBandingDialogOpen} onOpenChange={setIsEditEdgeBandingDialogOpen}>
+            <DialogContent className="w-[95vw] max-w-md mx-auto">
+              <DialogHeader>
+                <DialogTitle className="text-lg">
+                  {language === 'uz' ? 'Kromkalash xizmatini tahrirlash' : 'Редактировать услугу кромкования'}
+                </DialogTitle>
+                <DialogDescription className="text-sm">
+                  {language === 'uz' 
+                    ? 'Kromkalash xizmati parametrlarini o\'zgartiring' 
+                    : 'Измените параметры услуги кромкования'}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-sm">{t('thickness')}</Label>
+                  <Select 
+                    value={edgeBandingForm.thicknessId.toString()} 
+                    onValueChange={(value) => {
+                      const selected = thicknesses.find(t => t.id === parseInt(value));
+                      if (selected) {
+                        setEdgeBandingForm({
+                          ...edgeBandingForm,
+                          thicknessId: selected.id,
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="text-sm">
+                      <SelectValue placeholder={language === 'uz' ? 'Qalinlik tanlang' : 'Выберите толщину'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {thicknesses.map((thickness) => (
+                        <SelectItem key={thickness.id} value={thickness.id.toString()} className="text-sm">
+                          {thickness.size} mm - {parseFloat(thickness.price).toLocaleString()} UZS/{language === 'uz' ? 'м' : 'м'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm">{t('width')} (mm)</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={edgeBandingForm.width || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEdgeBandingForm({ 
+                          ...edgeBandingForm, 
+                          width: val === '' ? 0 : Math.max(1, parseNumericInput(val))
+                        });
+                      }}
+                      onBlur={() => {
+                        if (edgeBandingForm.width < 1) {
+                          setEdgeBandingForm({ ...edgeBandingForm, width: selectedItem?.product.width || 0 });
+                        }
+                      }}
+                      className="text-sm"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-sm">{t('height')} (mm)</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={edgeBandingForm.height || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setEdgeBandingForm({ 
+                          ...edgeBandingForm, 
+                          height: val === '' ? 0 : Math.max(1, parseNumericInput(val))
+                        });
+                      }}
+                      onBlur={() => {
+                        if (edgeBandingForm.height < 1) {
+                          setEdgeBandingForm({ ...edgeBandingForm, height: selectedItem?.product.height || 0 });
+                        }
+                      }}
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+                {edgeBandingForm.thicknessId !== 0 && (
+                  <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4 space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:justify-between text-xs sm:text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">{t('linearMeters')}</span>
+                      <span className="font-medium">
+                        {((2 * (edgeBandingForm.width + edgeBandingForm.height)) / 1000).toFixed(2)} {language === 'uz' ? 'м' : 'м'}
+                      </span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">{t('total')}</span>
+                      <span className="text-xl sm:text-2xl font-bold text-blue-600 dark:text-blue-400 break-all">
+                        {((2 * (edgeBandingForm.width + edgeBandingForm.height) / 1000) * 
+                          (thicknesses.find(t => t.id === edgeBandingForm.thicknessId)?.price 
+                            ? parseFloat(thicknesses.find(t => t.id === edgeBandingForm.thicknessId)!.price) 
+                            : 0)).toLocaleString()} UZS
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline"
+                    className="flex-1" 
+                    onClick={() => setIsEditEdgeBandingDialogOpen(false)}
+                  >
+                    {t('cancel')}
+                  </Button>
+                  <Button 
+                    className="flex-1" 
+                    onClick={handleEditEdgeBanding}
+                    disabled={isEditingService[selectedItem?.id || ''] || edgeBandingForm.thicknessId === 0}
+                  >
+                    {isEditingService[selectedItem?.id || ''] ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : null}
+                    {language === 'uz' ? 'Saqlash' : 'Сохранить'}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <div className="lg:col-span-1">
             <Card className="sticky top-6">

@@ -36,7 +36,10 @@ export const translations = {
     addToCart: 'Savatchaga qo\'shish',
     inStock: 'Omborda',
     outOfStock: 'Omborda yo\'q',
-    
+    orderNumber: 'Buyurtma raqami',
+    totalRevenue: 'Umumiy daromad',
+    discountType: 'Chegirma turi',
+    paymentMethod: "To'lov usuli",
     // Categories
     MDF: 'MDF',
     LDSP: 'LDSP',
@@ -314,6 +317,10 @@ export const translations = {
     phone: 'Телефон',
     address: 'Адрес',
     email: 'Email',
+    orderNumber: 'Номер заказа',
+    totalRevenue: 'Общий доход',
+    discountType: 'Тип скидки',
+    paymentMethod: "Способ оплаты",
     customerAdded: 'Клиент добавлен',
     customerUpdated: 'Клиент обновлен',
     customerDeleted: 'Клиент удален',
