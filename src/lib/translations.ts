@@ -94,6 +94,7 @@ export const translations = {
     topSellingProducts: 'Eng ko\'p sotiladigan mahsulotlar',
     revenueByCategory: 'Kategoriya bo\'yicha daromad',
     salesTrend: 'Sotuvlar tendensiyasi',
+    totalPurchases: 'Jami xaridlar',
     
     // User Management
     addUser: 'Foydalanuvchi qo\'shish',
@@ -346,6 +347,7 @@ export const translations = {
     remainingDebt: 'Остаток долга',
     fullCredit: 'Полный кредит',
     partialPayment: 'Частичная оплата',
+    totalPurchases: 'Общая сумма покупок',
   }
 };
 

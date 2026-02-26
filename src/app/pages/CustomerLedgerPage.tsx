@@ -1,37 +1,93 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
-import { Customer } from '../../lib/types';
+import { Customer, CustomerTransaction } from '../../lib/types';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
-import { DollarSign, TrendingUp, TrendingDown, Calendar, User, CreditCard, Eye, Users, ShoppingBag } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Calendar, User, CreditCard, Eye, Users, ShoppingBag, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const CustomerLedgerPage: React.FC = () => {
   const { 
     customers, 
-    customerTransactions, 
+    fetchCustomers,
     addCustomerTransaction, 
     getCustomerBalance, 
-    currentUser,
+    user,
     language,
-    debtStats,
-    fetchDebtStats,
-    isFetchingDebtStats
+    customerStats,
+    isFetchingCustomerStats,
+    isFetchingCustomers
   } = useApp();
   
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentDescription, setPaymentDescription] = useState('');
+  const [isAddingPayment, setIsAddingPayment] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Local state for customer transactions since it's not in context
+  const [customerTransactions, setCustomerTransactions] = useState<CustomerTransaction[]>([]);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
 
-  // Fetch debt stats on component mount
+  // Fetch customers on component mount
   useEffect(() => {
-    fetchDebtStats();
-  }, []);
+    if (user) {
+      fetchCustomers();
+    }
+  }, [user]);
+
+  // Fetch transactions when customer is selected
+  useEffect(() => {
+    if (selectedCustomer && user) {
+      fetchCustomerTransactions(selectedCustomer.id);
+    }
+  }, [selectedCustomer, user]);
+
+  // Search customers with debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (user) {
+        fetchCustomers(searchTerm);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, user]);
+
+  // Function to fetch customer transactions
+  const fetchCustomerTransactions = async (customerId: string) => {
+    setIsLoadingTransactions(true);
+    try {
+      // You need to implement this API call
+      // This is a placeholder - replace with your actual API call
+      const response = await fetch(`/api/customers/${customerId}/transactions`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch transactions');
+      }
+      
+      const data = await response.json();
+      setCustomerTransactions(data);
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      toast.error(
+        language === 'uz' 
+          ? 'Operatsiyalarni yuklashda xatolik yuz berdi' 
+          : 'Ошибка при загрузке операций'
+      );
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
 
   const t = (key: string) => getTranslation(language, key as any);
 
@@ -60,7 +116,7 @@ export const CustomerLedgerPage: React.FC = () => {
     setSelectedCustomer(customer);
   };
 
-  const handleAddPayment = () => {
+  const handleAddPayment = async () => {
     if (!selectedCustomer) return;
 
     const amount = parseFloat(paymentAmount);
@@ -69,22 +125,37 @@ export const CustomerLedgerPage: React.FC = () => {
       return;
     }
 
-    addCustomerTransaction({
-      customerId: selectedCustomer.id,
-      customerName: selectedCustomer.name,
-      type: 'payment',
-      amount: amount,
-      description: paymentDescription || undefined,
-      processedBy: currentUser?.full_name || currentUser?.username || '',
-    });
+    setIsAddingPayment(true);
+    try {
+      await addCustomerTransaction({
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        type: 'payment',
+        amount: amount,
+        description: paymentDescription || undefined,
+        processedBy: user?.full_name || user?.username || '',
+      });
 
-    // Refresh debt stats after adding payment
-    fetchDebtStats();
+      // Refresh transactions after adding payment
+      await fetchCustomerTransactions(selectedCustomer.id);
 
-    toast.success(t('paymentAdded'));
-    setIsPaymentDialogOpen(false);
-    setPaymentAmount('');
-    setPaymentDescription('');
+      toast.success(t('paymentAdded'));
+      setIsPaymentDialogOpen(false);
+      setPaymentAmount('');
+      setPaymentDescription('');
+    } catch (error) {
+      // Error is already handled in context
+    } finally {
+      setIsAddingPayment(false);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchTerm('');
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
   };
 
   const getCustomerTransactions = (customerId: string) => {
@@ -107,7 +178,7 @@ export const CustomerLedgerPage: React.FC = () => {
         </p>
       </div>
 
-      {/* Statistics Cards - Using debtStats from API */}
+      {/* Statistics Cards - Using customerStats from API */}
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -115,12 +186,12 @@ export const CustomerLedgerPage: React.FC = () => {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isFetchingDebtStats ? (
+            {isFetchingCustomerStats ? (
               <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
             ) : (
               <>
                 <div className="text-2xl font-bold text-red-600">
-                  {formatCurrency(debtStats?.total_debt || 0)} {language === 'uz' ? "so'm" : "сум"}
+                  {formatCurrency(customerStats?.total_debt || 0)} {language === 'uz' ? "so'm" : "сум"}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {language === 'uz' ? 'Umumiy qarz' : 'Общая задолженность'}
@@ -138,11 +209,11 @@ export const CustomerLedgerPage: React.FC = () => {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isFetchingDebtStats ? (
+            {isFetchingCustomerStats ? (
               <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
             ) : (
               <>
-                <div className="text-2xl font-bold">{debtStats?.debtor_customers || 0}</div>
+                <div className="text-2xl font-bold">{customerStats?.debtor_customers || 0}</div>
                 <p className="text-xs text-muted-foreground">
                   {language === 'uz' ? `${customers.length} mijozdan` : `Из ${customers.length} клиентов`}
                 </p>
@@ -157,11 +228,11 @@ export const CustomerLedgerPage: React.FC = () => {
             <ShoppingBag className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            {isFetchingDebtStats ? (
+            {isFetchingCustomerStats ? (
               <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
             ) : (
               <>
-                <div className="text-2xl font-bold">{debtStats?.nasiya_sales || 0}</div>
+                <div className="text-2xl font-bold">{customerStats?.nasiya_sales || 0}</div>
                 <p className="text-xs text-muted-foreground">
                   {language === 'uz' ? 'Nasiya sotuvlar soni' : 'Количество кредитных продаж'}
                 </p>
@@ -170,6 +241,41 @@ export const CustomerLedgerPage: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Search */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">{t('search')}</CardTitle>
+          <CardDescription>
+            {language === 'uz' 
+              ? 'Ism yoki telefon raqami bo\'yicha qidirish' 
+              : 'Поиск по имени или номеру телефона'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+            <Input
+              type="search"
+              placeholder={language === 'uz' 
+                ? "Ism yoki telefon raqamini kiriting..." 
+                : "Введите имя или номер телефона..."}
+              value={searchTerm}
+              onChange={handleSearchChange}
+              className="pl-10"
+              disabled={isFetchingCustomers}
+            />
+            {searchTerm && (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Customers List */}
@@ -183,15 +289,34 @@ export const CustomerLedgerPage: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {customers.length === 0 ? (
+            {isFetchingCustomers && customers.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : customers.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <User className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">{t('noCustomers')}</p>
+                <p className="text-sm">
+                  {searchTerm 
+                    ? (language === 'uz' ? 'Hech narsa topilmadi' : 'Ничего не найдено')
+                    : t('noCustomers')}
+                </p>
+                {searchTerm && (
+                  <Button 
+                    variant="link" 
+                    onClick={handleClearSearch}
+                    className="mt-2"
+                  >
+                    {language === 'uz' ? 'Tozalash' : 'Очистить'}
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="space-y-2 max-h-[500px] overflow-y-auto">
                 {customers.map((customer) => {
                   const balance = getCustomerBalance(customer.id);
+                  // Use API debt if available, otherwise use calculated balance
+                  const displayDebt = customer.debt !== undefined ? customer.debt : balance.balance;
                   const isSelected = selectedCustomer?.id === customer.id;
                   
                   return (
@@ -214,11 +339,11 @@ export const CustomerLedgerPage: React.FC = () => {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className={`font-semibold ${balance.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            {formatCurrency(balance.balance)} {language === 'uz' ? "so'm" : "сум"}
+                          <p className={`font-semibold ${displayDebt > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {formatCurrency(displayDebt)} {language === 'uz' ? "so'm" : "сум"}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {balance.balance > 0 ? t('outstandingDebt') : (language === 'uz' ? 'Qarz yo\'q' : 'Нет долга')}
+                            {displayDebt > 0 ? t('outstandingDebt') : (language === 'uz' ? 'Qarz yo\'q' : 'Нет долга')}
                           </p>
                         </div>
                       </div>
@@ -238,7 +363,10 @@ export const CustomerLedgerPage: React.FC = () => {
                 {selectedCustomer ? selectedCustomer.name : t('selectCustomer')}
               </CardTitle>
               {selectedCustomer && (
-                <Button onClick={() => setIsPaymentDialogOpen(true)}>
+                <Button 
+                  onClick={() => setIsPaymentDialogOpen(true)}
+                  disabled={isAddingPayment}
+                >
                   <CreditCard className="mr-2 h-4 w-4" />
                   {t('addPayment')}
                 </Button>
@@ -281,7 +409,11 @@ export const CustomerLedgerPage: React.FC = () => {
                     {language === 'uz' ? 'Operatsiyalar tarixi' : 'История операций'}
                   </h4>
                   <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                    {getCustomerTransactions(selectedCustomer.id).length === 0 ? (
+                    {isLoadingTransactions ? (
+                      <div className="flex justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
+                    ) : getCustomerTransactions(selectedCustomer.id).length === 0 ? (
                       <div className="text-center py-8 text-gray-400">
                         <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
                         <p className="text-sm">
@@ -347,7 +479,15 @@ export const CustomerLedgerPage: React.FC = () => {
       </div>
 
       {/* Payment Dialog */}
-      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+      <Dialog open={isPaymentDialogOpen} onOpenChange={(open) => {
+        if (!isAddingPayment) {
+          setIsPaymentDialogOpen(open);
+          if (!open) {
+            setPaymentAmount('');
+            setPaymentDescription('');
+          }
+        }
+      }}>
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
             <DialogTitle>{t('addPayment')}</DialogTitle>
@@ -374,6 +514,7 @@ export const CustomerLedgerPage: React.FC = () => {
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(e.target.value)}
                   placeholder="0"
+                  disabled={isAddingPayment}
                 />
               </div>
 
@@ -386,15 +527,32 @@ export const CustomerLedgerPage: React.FC = () => {
                   value={paymentDescription}
                   onChange={(e) => setPaymentDescription(e.target.value)}
                   placeholder={language === 'uz' ? 'Masalan: Qisman to\'lov' : 'Например: Частичная оплата'}
+                  disabled={isAddingPayment}
                 />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsPaymentDialogOpen(false)}
+              disabled={isAddingPayment}
+            >
               {t('cancel')}
             </Button>
-            <Button onClick={handleAddPayment}>{t('save')}</Button>
+            <Button 
+              onClick={handleAddPayment} 
+              disabled={isAddingPayment || !paymentAmount}
+            >
+              {isAddingPayment ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  {language === 'uz' ? 'Saqlanmoqda...' : 'Сохранение...'}
+                </>
+              ) : (
+                t('save')
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

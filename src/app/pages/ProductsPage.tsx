@@ -11,8 +11,6 @@ import { Search, ShoppingCart, Package, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 
-const defaultImage = 'https://images.unsplash.com/photo-1644925757334-d0397c01518c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwbHl3b29kJTIwd29vZCUyMHBhbmVsJTIwdGV4dHVyZXxlbnwxfHx8fDE3NzAzNzcyMTR8MA&ixlib=rb-4.1.0&q=80&w=1080';
-
 // Local storage key
 const CART_STORAGE_KEY = 'app_cart';
 
