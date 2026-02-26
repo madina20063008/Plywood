@@ -534,3 +534,21 @@ export interface ApiQuality {
   id: number;
   name: string;
 }
+
+// In your types file
+export interface BasketItem {
+  id: number;
+  product: Product;
+}
+
+export interface Basket {
+  id: number;
+  items: BasketItem[];
+}
+
+// For your local cart state
+export interface LocalCartItem {
+  id: string; // local unique ID
+  product: Product;
+  quantity: number; // local only, not sent to API
+}

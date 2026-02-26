@@ -1254,40 +1254,79 @@ const getCustomerById = useCallback(async (id: number): Promise<Customer | null>
     }
   }, [user, language]);
 
-  const addToCart = async (item: CartItem) => {
-    if (!user) {
-      toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
-      return;
+  const addToCart = async (item: CartItem | Product, quantity: number = 1) => {
+  if (!user) {
+    toast.error(language === 'uz' ? 'Avval tizimga kiring' : 'Сначала войдите в систему');
+    return;
+  }
+
+  try {
+    let productId: number;
+    let currentQuantity = quantity;
+
+    // Handle both CartItem and Product types
+    if ('product' in item) {
+      // It's a CartItem
+      productId = item.product.id;
+      
+      // Check if this item already exists in cart
+      const existingItem = cart.find(cartItem => cartItem.product.id === productId);
+      if (existingItem) {
+        // If it exists, we want to increment by the new quantity
+        currentQuantity = existingItem.quantity + quantity;
+      }
+    } else {
+      // It's a Product
+      productId = item.id;
+      
+      // Check if this product already exists in cart
+      const existingItem = cart.find(cartItem => cartItem.product.id === productId);
+      if (existingItem) {
+        // If it exists, we want to increment by the new quantity
+        currentQuantity = existingItem.quantity + quantity;
+      }
     }
 
-    try {
-      const productId = item.product.id;
-      await basketApi.addToBasket(productId);
+    // Call API with the final quantity
+    await basketApi.addToBasket(productId, currentQuantity);
+    
+    // Update local state
+    setCart(prevCart => {
+      const existingItemIndex = prevCart.findIndex(
+        cartItem => cartItem.product.id === productId
+      );
       
-      setCart(prevCart => {
-        const existingItem = prevCart.find(cartItem => cartItem.product.id === item.product.id);
-        
-        if (existingItem) {
-          return prevCart;
-        } else {
-          const newItem = {
-            ...item,
-            id: Date.now().toString(),
-            basketItemId: Date.now(),
-          };
-          return [...prevCart, newItem];
-        }
-      });
-      
-      await fetchBasket();
-    } catch (error) {
-      console.error('Failed to add to basket:', error);
-      toast.error(language === 'uz' 
-        ? 'Savatchaga qo\'shishda xatolik yuz berdi' 
-        : 'Ошибка при добавлении в корзину');
-      throw error;
-    }
-  };
+      if (existingItemIndex >= 0) {
+        // Update existing item quantity
+        const updatedCart = [...prevCart];
+        updatedCart[existingItemIndex] = {
+          ...updatedCart[existingItemIndex],
+          quantity: updatedCart[existingItemIndex].quantity + quantity
+        };
+        return updatedCart;
+      } else {
+        // Add new item
+        const newItem: CartItem = {
+          id: Date.now().toString(),
+          basketItemId: Date.now(),
+          product: 'product' in item ? item.product : item,
+          quantity: quantity,
+        };
+        return [...prevCart, newItem];
+      }
+    });
+    
+    // Refresh basket from server
+    await fetchBasket();
+    
+  } catch (error) {
+    console.error('Failed to add to basket:', error);
+    toast.error(language === 'uz' 
+      ? 'Savatchaga qo\'shishda xatolik yuz berdi' 
+      : 'Ошибка при добавлении в корзину');
+    throw error;
+  }
+};
 
   const removeFromCart = async (itemId: string) => {
     if (!user) return;

@@ -123,29 +123,39 @@ export const ProductsPage: React.FC = () => {
   }, [searchQuery, selectedCategoryId, selectedQualityId, user, qualities]);
 
   const handleAddToCart = async (product: Product) => {
-    const cartItem: CartItem = {
-      id: `${Date.now()}-${product.id}`,
-      product,
-      quantity: 1, // Always add 1 quantity
-    };
-    
     setIsAddingToCart(prev => ({ ...prev, [product.id]: true }));
     
     try {
-      // Update local cart first for immediate feedback
-      const updatedLocalCart = [...localCart, cartItem];
+      // Check if product already exists in cart (from context)
+      const existingItem = cart.find(item => item.product.id === product.id);
+      
+      if (existingItem) {
+        // Product already in cart - show message and optionally navigate to cart
+        toast.info(language === 'uz' 
+          ? 'Bu mahsulot allaqachon savatda' 
+          : 'Этот продукт уже в корзине');
+        
+        // Option: Navigate to cart
+        // navigate('/cart');
+        return;
+      }
+      
+      // Add new item to cart via context (API only supports one per product)
+      await addToCart(product);
+      
+      // Update local storage for offline support
+      const newLocalItem: CartItem = {
+        id: `${Date.now()}-${product.id}`,
+        product,
+        quantity: 1, // API doesn't support quantity, so always 1
+      };
+      
+      const updatedLocalCart = [...localCart, newLocalItem];
       setLocalCart(updatedLocalCart);
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedLocalCart));
       
-      // Then try to add to API
-      await addToCart(cartItem);
       toast.success(t('addedToCart'));
     } catch (error) {
-      // If API fails, remove from local cart
-      const revertedCart = localCart.filter(item => item.product.id !== product.id);
-      setLocalCart(revertedCart);
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(revertedCart));
-      
       toast.error(language === 'uz' 
         ? 'Savatchaga qo\'shishda xatolik yuz berdi' 
         : 'Ошибка при добавлении в корзину');
