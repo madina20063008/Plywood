@@ -728,8 +728,8 @@ export const SupplierPage: React.FC = () => {
               type="search"
               placeholder={
                 language === "uz"
-                  ? "Ism, telefon yoki kompaniya nomi bo'yicha qidirish..."
-                  : "Поиск по имени, телефону или названию компании..."
+                  ? "Ism bo'yicha qidirish..."
+                  : "Поиск по имени..."
               }
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}

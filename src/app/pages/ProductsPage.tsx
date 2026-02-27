@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
 import { Product, CartItem } from '../../lib/types';
@@ -47,6 +47,10 @@ export const ProductsPage: React.FC = () => {
   const [isAddingToCart, setIsAddingToCart] = useState<Record<number, boolean>>({});
   const [localCart, setLocalCart] = useState<CartItem[]>([]);
   const navigate = useNavigate();
+  
+  // Use refs to track initial load and prevent double fetches
+  const initialLoadDone = useRef(false);
+  const filtersRef = useRef({ search: '', category: 'all', quality: 'all' });
 
   const t = (key: string) => getTranslation(language, key as any);
 
@@ -79,45 +83,74 @@ export const ProductsPage: React.FC = () => {
     }
   }, [cart]);
 
-  // Fetch categories, qualities and products when component mounts
+  // Initial data fetch - only once when user is available
   useEffect(() => {
-    if (user) {
-      fetchCategories();
-      fetchQualities();
-      fetchProducts();
-      fetchBasket();
+    if (user && !initialLoadDone.current) {
+      initialLoadDone.current = true;
+      
+      // Fetch all data in parallel
+      const fetchInitialData = async () => {
+        try {
+          await Promise.all([
+            fetchCategories(),
+            fetchQualities(),
+            fetchProducts(),
+            fetchBasket()
+          ]);
+        } catch (error) {
+          console.error('Error fetching initial data:', error);
+        }
+      };
+      
+      fetchInitialData();
     }
-  }, [user]);
+  }, [user]); // Only depends on user
 
-  // Apply filters when search or filters change
+  // Handle filters with debounce - but only after initial load
   useEffect(() => {
-    if (user) {
-      const filters: any = {};
-      
-      if (searchQuery) filters.search = searchQuery;
-      
-      if (selectedCategoryId !== 'all') {
-        filters.category = parseInt(selectedCategoryId);
-      }
-      
-      if (selectedQualityId !== 'all') {
-        // Find the quality name by ID
-        const selectedQuality = qualities.find(q => q.id.toString() === selectedQualityId);
-        if (selectedQuality) {
-          const qualityValue = mapQualityToApiValue(selectedQuality.name);
-          if (qualityValue) {
-            filters.quality = qualityValue;
-          }
+    if (!user || !initialLoadDone.current) return;
+
+    const currentFilters = {
+      search: searchQuery,
+      category: selectedCategoryId,
+      quality: selectedQualityId
+    };
+
+    // Check if filters actually changed
+    if (
+      filtersRef.current.search === currentFilters.search &&
+      filtersRef.current.category === currentFilters.category &&
+      filtersRef.current.quality === currentFilters.quality
+    ) {
+      return; // No change, don't fetch
+    }
+
+    filtersRef.current = currentFilters;
+
+    const filters: any = {};
+    
+    if (searchQuery) filters.search = searchQuery;
+    
+    if (selectedCategoryId !== 'all') {
+      filters.category = parseInt(selectedCategoryId);
+    }
+    
+    if (selectedQualityId !== 'all') {
+      const selectedQuality = qualities.find(q => q.id.toString() === selectedQualityId);
+      if (selectedQuality) {
+        const qualityValue = mapQualityToApiValue(selectedQuality.name);
+        if (qualityValue) {
+          filters.quality = qualityValue;
         }
       }
-      
-      // Debounce search
-      const timeoutId = setTimeout(() => {
-        fetchProducts(filters);
-      }, 500);
-      
-      return () => clearTimeout(timeoutId);
     }
+    
+    // Debounce search
+    const timeoutId = setTimeout(() => {
+      fetchProducts(filters);
+    }, 500);
+    
+    return () => clearTimeout(timeoutId);
   }, [searchQuery, selectedCategoryId, selectedQualityId, user, qualities]);
 
   const handleAddToCart = async (product: Product) => {
@@ -128,24 +161,19 @@ export const ProductsPage: React.FC = () => {
       const existingItem = cart.find(item => item.product.id === product.id);
       
       if (existingItem) {
-        // Product already in cart - show message and optionally navigate to cart
         toast.info(language === 'uz' 
           ? 'Bu mahsulot allaqachon savatda' 
           : 'Этот продукт уже в корзине');
-        
-        // Option: Navigate to cart
-        // navigate('/cart');
         return;
       }
       
-      // Add new item to cart via context (API only supports one per product)
       await addToCart(product);
       
       // Update local storage for offline support
       const newLocalItem: CartItem = {
         id: `${Date.now()}-${product.id}`,
         product,
-        quantity: 1, // API doesn't support quantity, so always 1
+        quantity: 1,
       };
       
       const updatedLocalCart = [...localCart, newLocalItem];
@@ -199,6 +227,7 @@ export const ProductsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Rest of your JSX remains exactly the same */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{t('products')}</h1>
@@ -230,7 +259,6 @@ export const ProductsPage: React.FC = () => {
               />
             </div>
             
-            {/* Category Select - From API */}
             <Select 
               value={selectedCategoryId} 
               onValueChange={setSelectedCategoryId}
@@ -251,7 +279,6 @@ export const ProductsPage: React.FC = () => {
               </SelectContent>
             </Select>
             
-            {/* Quality Select - From API */}
             <Select 
               value={selectedQualityId} 
               onValueChange={setSelectedQualityId}
@@ -274,7 +301,7 @@ export const ProductsPage: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && products.length === 0 ? (
             <div className="flex justify-center items-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
               <span className="ml-2 text-gray-500">

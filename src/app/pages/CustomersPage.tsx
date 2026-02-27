@@ -646,7 +646,7 @@ export const CustomersPage: React.FC = () => {
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {language === "uz" ? "Jami xaridlar" : "Всего покупок"}
                     </p>
-                    <p className="text-xl font-bold text-red-600">
+                    <p className="text-[18px] font-bold text-red-600">
                       {formatCurrency(paymentHistory?.stats.total_orders || 0)}{" "}
                       {language === "uz" ? "so'm" : "сум"}
                     </p>
@@ -655,7 +655,7 @@ export const CustomersPage: React.FC = () => {
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {language === "uz" ? "Jami to'langan" : "Всего оплачено"}
                     </p>
-                    <p className="text-xl font-bold text-green-600">
+                    <p className="text-[18px] font-bold text-green-600">
                       {formatCurrency(paymentHistory?.stats.total_paid || 0)}{" "}
                       {language === "uz" ? "so'm" : "сум"}
                     </p>
@@ -664,76 +664,13 @@ export const CustomersPage: React.FC = () => {
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       {language === "uz" ? "Qarz qoldiq" : "Остаток долга"}
                     </p>
-                    <p className="text-xl font-bold text-blue-600">
+                    <p className="text-[18px] font-bold text-blue-600">
                       {formatCurrency(paymentHistory?.stats.remaining_debt || 0)}{" "}
                       {language === "uz" ? "so'm" : "сум"}
                     </p>
                   </div>
                 </div>
 
-                {/* Contact Information */}
-                <div>
-                  <h4 className="font-semibold mb-3">
-                    {language === "uz"
-                      ? "Bog'lanish ma'lumotlari"
-                      : "Контактная информация"}
-                  </h4>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 p-2 border rounded-lg dark:border-gray-700">
-                      <Phone className="h-5 w-5 text-gray-500" />
-                      <div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {t("phone")}
-                        </p>
-                        <p className="font-medium">{selectedCustomer.phone}</p>
-                      </div>
-                    </div>
-
-                    {selectedCustomer.address && (
-                      <div className="flex items-center gap-3 p-2 border rounded-lg dark:border-gray-700">
-                        <MapPin className="h-5 w-5 text-gray-500" />
-                        <div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {t("address")}
-                          </p>
-                          <p className="font-medium">
-                            {selectedCustomer.address}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Email field */}
-                    {selectedCustomer.email && (
-                      <div className="flex items-center gap-3 p-2 border rounded-lg dark:border-gray-700">
-                        <Mail className="h-5 w-5 text-gray-500" />
-                        <div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Email
-                          </p>
-                          <p className="font-medium">
-                            {selectedCustomer.email}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Notes field */}
-                    {selectedCustomer.notes && (
-                      <div className="flex items-start gap-3 p-2 border rounded-lg dark:border-gray-700">
-                        <FileText className="h-5 w-5 text-gray-500 mt-0.5" />
-                        <div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {t("notes")}
-                          </p>
-                          <p className="text-sm whitespace-pre-wrap">
-                            {selectedCustomer.notes}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
                 {/* Transaction History - Using payment history from API */}
                 <div>

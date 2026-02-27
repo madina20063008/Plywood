@@ -79,6 +79,7 @@ export const translations = {
     filter: 'Filtrlash',
     print: 'Chop etish',
     download: 'Yuklab olish',
+    pay: "To'lash",
     
     // Receipt
     receipt: 'Chek',
@@ -349,6 +350,7 @@ export const translations = {
     partialPayment: 'Частичная оплата',
     totalPurchases: 'Общая сумма покупок',
     supplier: "Поставщик",
+    pay: "Платить",
   }
 };
 
