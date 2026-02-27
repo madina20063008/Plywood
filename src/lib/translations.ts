@@ -136,7 +136,7 @@ export const translations = {
     productDeleted: 'Mahsulot o\'chirildi',
     saleCompleted: 'Sotuv muvaffaqiyatli yakunlandi',
     saleUpdated: 'Sotuv ma\'lumotlari yangilandi',
-    
+    supplier: "Ta'minotchi",
     // Sold Products
     editSale: 'Sotuvni tahrirlash',
     viewDetails: 'Tafsilotlarni ko\'rish',
@@ -348,6 +348,7 @@ export const translations = {
     fullCredit: 'Полный кредит',
     partialPayment: 'Частичная оплата',
     totalPurchases: 'Общая сумма покупок',
+    supplier: "Поставщик",
   }
 };
 

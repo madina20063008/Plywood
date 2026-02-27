@@ -98,10 +98,16 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       icon: UserPlus,
       roles: ['admin', 'manager']
     },
+    // { 
+    //   name: t('customerLedger'), 
+    //   path: '/customer-ledger', 
+    //   icon: Wallet,
+    //   roles: ['admin', 'manager']
+    // },
     { 
-      name: t('customerLedger'), 
-      path: '/customer-ledger', 
-      icon: Wallet,
+      name: t('supplier'), 
+      path: '/supplier', 
+      icon: Users,
       roles: ['admin', 'manager']
     },
     { 

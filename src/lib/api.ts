@@ -18,7 +18,13 @@ import {
   CreateThicknessData,
   ApiThickness,
   ApiOrder,
-  CreateOrderData
+  CreateOrderData,
+  ApiSupplier,
+  CreateSupplierData,
+  SupplierPaymentData,
+  SupplierTransaction,
+  CoverDebtRequest,
+  PaymentHistoryResponse
 } from "./types";
 
 // api.ts
@@ -187,7 +193,17 @@ export const customerApi = {
   getById: (id: number): Promise<ApiCustomer> => {
     return apiRequest<ApiCustomer>(`/customer/customer/${id}/`);
   },
+coverDebt: (id: number, data: CoverDebtRequest): Promise<any> => {
+    return apiRequest<any>(`/customer/cover-debt/${id}/`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
 
+  // Get customer payment history
+  getPaymentHistory: (id: number): Promise<PaymentHistoryResponse> => {
+    return apiRequest<PaymentHistoryResponse>(`/customer/payment-history/${id}/`);
+  },
   // Get customer statistics
   getStats: (): Promise<{
     total_customers: number;
@@ -585,5 +601,58 @@ export const qualityApi = {
     return apiRequest(`/product/quality/${id}/`, {
       method: 'DELETE',
     });
+  },
+};
+
+
+// Supplier API
+export const supplierApi = {
+  // Get all suppliers with optional search
+  getAll: (search?: string): Promise<ApiSupplier[]> => {
+    const endpoint = search 
+      ? `/supplier/supplier/?search=${encodeURIComponent(search)}`
+      : '/supplier/supplier/';
+    return apiRequest<ApiSupplier[]>(endpoint);
+  },
+
+  // Get single supplier by ID
+  getById: (id: number): Promise<ApiSupplier> => {
+    return apiRequest<ApiSupplier>(`/supplier/supplier/${id}/`);
+  },
+
+  // Create new supplier
+  create: (data: CreateSupplierData): Promise<ApiSupplier> => {
+    return apiRequest<ApiSupplier>('/supplier/supplier/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Update supplier
+  update: (id: number, data: Partial<CreateSupplierData>): Promise<ApiSupplier> => {
+    return apiRequest<ApiSupplier>(`/supplier/supplier/${id}/`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Delete supplier
+  delete: (id: number): Promise<void> => {
+    return apiRequest<void>(`/supplier/supplier/${id}/`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Add supplier payment
+  addPayment: (data: SupplierPaymentData): Promise<any> => {
+    return apiRequest('/supplier/payment/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Get supplier transactions
+  getTransactions: (supplierId: number): Promise<SupplierTransaction[]> => {
+    return apiRequest<SupplierTransaction[]>(`/supplier/${supplierId}/transactions/`);
   },
 };

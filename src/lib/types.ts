@@ -285,6 +285,7 @@ export interface ApiAcceptance {
   description: string;
   created_at: string;
   updated_at: string;
+  exchange_rate?: string;
 }
 
 export interface CreateAcceptanceData {
@@ -551,4 +552,68 @@ export interface LocalCartItem {
   id: string; // local unique ID
   product: Product;
   quantity: number; // local only, not sent to API
+}
+
+// Add these to your existing types.ts file
+
+export interface ApiSupplier {
+  id: number;
+  full_name: string;
+  phone_number: string;
+  debt: string;
+  is_active: boolean;
+  company: string;
+}
+
+export interface CreateSupplierData {
+  full_name: string;
+  phone_number: string;
+  company: string;
+}
+
+export interface SupplierPaymentData {
+  supplier_id: number;
+  amount: string;
+}
+
+export interface SupplierTransaction {
+  id: number;
+  transaction_type: 'purchase' | 'payment';
+  amount: string;
+  description: string;
+  created_at: string;
+}
+
+// App Supplier type
+export interface Supplier {
+  id: string;
+  name: string;
+  phone: string;
+  debt: number;
+  isActive: boolean;
+  company: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Add these types to your types.ts file
+
+export interface PaymentHistoryItem {
+  id: number;
+  type: "DEBT_ADD" | "PAYMENT";
+  amount: string;
+  created_at: string;
+}
+
+export interface PaymentHistoryResponse {
+  history: PaymentHistoryItem[];
+  stats: {
+    total_orders: number;
+    total_paid: number;
+    remaining_debt: number;
+  };
+}
+
+export interface CoverDebtRequest {
+  amount: string;
 }

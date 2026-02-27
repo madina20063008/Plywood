@@ -17,6 +17,7 @@ import { CustomerLedgerPage } from './pages/CustomerLedgerPage';
 import { ProductCreationPage } from './pages/ProductCreationPage';
 import { ProductReceivingPage } from './pages/ProductReceivingPage';
 import Services from './pages/Services';
+import SupplierPage from './pages/SupplierPage';
 
 export default function App() {
   return (
@@ -105,7 +106,7 @@ export default function App() {
               </ProtectedRoute>
             } 
           />
-          <Route 
+          {/* <Route 
             path="/customer-ledger" 
             element={
               <ProtectedRoute>
@@ -114,13 +115,23 @@ export default function App() {
                 </Layout>
               </ProtectedRoute>
             } 
-          />
+          /> */}
           <Route 
             path="/product-creation" 
             element={
               <ProtectedRoute>
                 <Layout>
                   <ProductCreationPage />
+                </Layout>
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/supplier" 
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <SupplierPage />
                 </Layout>
               </ProtectedRoute>
             } 
