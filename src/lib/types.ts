@@ -52,7 +52,8 @@ export interface User {
   createdAt: string;
 }
 
-// Product types
+// In your types.ts, update Product interface:
+
 export interface Product {
   id: number;
   name: string;
@@ -62,18 +63,19 @@ export interface Product {
   height: number;
   thickness: number;
   quality: string;
-  purchasePrice?: number; 
+  purchasePrice: number;
   unitPrice: number;
   stockQuantity: number;
   enabled: boolean;
-  imageUrl?: string;
   arrival_date: string;
   description: string;
-  notes?: string;
+  image?: string; // Add image field
   createdAt: string;
   updatedAt: string;
-  unitPriceDollar?: any;
-  purchasePriceDollar?: any
+  // Optional fields for dollar pricing
+  purchasePriceDollar?: number;
+  unitPriceDollar?: number;
+  lastPriceType?: 'sum' | 'dollar';
 }
 
 // Service types
@@ -236,12 +238,11 @@ export interface ApiCategory {
   name: string;
 }
 
-// Product API types
 export interface ApiProduct {
   id: number;
   name: string;
   color: string;
-  quality: 'standard' | 'economic' | 'premium'; // Fixed quality values
+  quality: string;
   width: string;
   height: string;
   thick: string;
@@ -252,21 +253,39 @@ export interface ApiProduct {
   description: string;
   is_active: boolean;
   category: number;
+  image?: string; // Add image field (optional)
+}
+
+export interface ProductFilters {
+  category?: number;
+  quality?: string;
+  search?: string;
+  page?: number;      // Add pagination
+  limit?: number;     // Add pagination
+}
+
+// Add pagination response interface
+export interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
 }
 
 export interface CreateProductData {
   name: string;
   color: string;
-  quality: 'standard' | 'economic' | 'premium'; // Fixed quality values
+  quality: 'standard' | 'economic' | 'premium';
   width: string;
   height: string;
   thick: string;
   arrival_date: string;
   description: string;
-  category: number;
+  category?: number;
+  image?: string; // Add image field
 }
 
-export type UpdateProductData = Partial<CreateProductData>;
+export interface UpdateProductData extends Partial<CreateProductData> {}
 
 export interface ProductFilters {
   category?: number;
@@ -395,7 +414,8 @@ export interface ApiOrder {
   items: ApiOrderItem[];
   created_at: string;
   is_anonymous: string;
-  customer: any
+  customer: any;
+  customer_fullname: string;
 }
 
 export interface CreateOrderData {

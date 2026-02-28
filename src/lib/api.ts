@@ -24,21 +24,18 @@ import {
   SupplierPaymentData,
   SupplierTransaction,
   CoverDebtRequest,
-  PaymentHistoryResponse
+  PaymentHistoryResponse,
+  PaginatedResponse
 } from "./types";
 
 // api.ts
 const API_BASE_URL = 'https://plywood.pythonanywhere.com';
 
-// api.ts - Update the apiRequest function with token expiration handling
-
 async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
+  // Start with options.headers or empty object
+  const headers: HeadersInit = { ...options.headers };
 
   // Get token from localStorage
   const token = localStorage.getItem('accessToken');
@@ -47,10 +44,27 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // CRITICAL: Only add Content-Type if it's not FormData
+  // Check if body is FormData
+  const isFormData = options.body instanceof FormData;
+  
+  // If it's not FormData and Content-Type isn't already set, add it
+  if (!isFormData && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   const config: RequestInit = {
     ...options,
     headers,
   };
+
+  // Log request details for debugging
+  console.log('API Request:', {
+    url,
+    method: options.method || 'GET',
+    isFormData,
+    headers: config.headers
+  });
 
   try {
     const response = await fetch(url, config);
@@ -287,36 +301,78 @@ export const categoryApi = {
 
 // Product API
 export const productApi = {
-  // Get all products with filters
-  getAll: (filters?: ProductFilters): Promise<ApiProduct[]> => {
+  getAll: async (filters?: ProductFilters): Promise<PaginatedResponse<ApiProduct>> => {
     let endpoint = '/product/products/';
     
     const params = new URLSearchParams();
+    
+    // Add filters if they exist
     if (filters?.category) params.append('category', filters.category.toString());
     if (filters?.quality) params.append('quality', filters.quality);
     if (filters?.search) params.append('search', filters.search);
+    
+    // CRITICAL: Always set page and limit, with defaults
+    // If page is provided, use it; otherwise default to 1
+    params.append('page', filters?.page?.toString() || '1');
+    
+    // If limit is provided, use it; otherwise default to 28
+    params.append('limit', filters?.limit?.toString() || '28');
+    
+    // Log the parameters for debugging
+    console.log('📦 Product API params:', {
+      category: filters?.category,
+      quality: filters?.quality,
+      search: filters?.search,
+      page: filters?.page || 1,
+      limit: filters?.limit || 28
+    });
     
     const queryString = params.toString();
     if (queryString) {
       endpoint += `?${queryString}`;
     }
     
-    return apiRequest<ApiProduct[]>(endpoint);
+    console.log('🌐 Product API endpoint:', endpoint);
+    
+    return apiRequest<PaginatedResponse<ApiProduct>>(endpoint);
   },
 
-  // Create new product
-  create: (data: CreateProductData): Promise<ApiProduct> => {
+  create: (data: CreateProductData | FormData): Promise<ApiProduct> => {
+    const isFormData = data instanceof FormData;
+    
+    // Log FormData contents for debugging
+    if (isFormData) {
+      console.log('Sending FormData:');
+      for (let pair of (data as FormData).entries()) {
+        console.log(pair[0] + ': ' + (pair[0] === 'image' ? '[File]' : pair[1]));
+      }
+    }
+    
     return apiRequest<ApiProduct>('/product/products/', {
       method: 'POST',
-      body: JSON.stringify(data),
+      // CRITICAL: When sending FormData, DO NOT set Content-Type header
+      // The browser will set it automatically with the correct boundary
+      headers: isFormData ? {} : { 'Content-Type': 'application/json' },
+      body: isFormData ? data : JSON.stringify(data),
     });
   },
 
-  // Update product
-  update: (id: number, data: UpdateProductData): Promise<ApiProduct> => {
+  update: (id: number, data: UpdateProductData | FormData): Promise<ApiProduct> => {
+    const isFormData = data instanceof FormData;
+    
+    // Log FormData contents for debugging
+    if (isFormData) {
+      console.log('Sending FormData for update:');
+      for (let pair of (data as FormData).entries()) {
+        console.log(pair[0] + ': ' + (pair[0] === 'image' ? '[File]' : pair[1]));
+      }
+    }
+    
     return apiRequest<ApiProduct>(`/product/products/${id}/`, {
       method: 'PUT',
-      body: JSON.stringify(data),
+      // CRITICAL: When sending FormData, DO NOT set Content-Type header
+      headers: isFormData ? {} : { 'Content-Type': 'application/json' },
+      body: isFormData ? data : JSON.stringify(data),
     });
   },
 
@@ -650,7 +706,12 @@ export const supplierApi = {
       body: JSON.stringify(data),
     });
   },
-
+getStats: (): Promise<{
+    total_suppliers: number;
+    total_debt: number;
+  }> => {
+    return apiRequest('/supplier/stats/');
+  },
   // Get supplier transactions
   getTransactions: (supplierId: number): Promise<SupplierTransaction[]> => {
     return apiRequest<SupplierTransaction[]>(`/supplier/${supplierId}/transactions/`);

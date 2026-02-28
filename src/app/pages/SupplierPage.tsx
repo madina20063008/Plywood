@@ -60,6 +60,9 @@ export const SupplierPage: React.FC = () => {
     isAddingSupplierPayment,
     language,
     user,
+    supplierStats,
+    isFetchingSupplierStats,
+    fetchSupplierStats,
   } = useApp();
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -92,10 +95,11 @@ export const SupplierPage: React.FC = () => {
 
   const t = (key: string) => getTranslation(language, key as any);
 
-  // Fetch suppliers on component mount
+  // Fetch suppliers and stats on component mount
   useEffect(() => {
     if (user) {
       fetchSuppliers();
+      fetchSupplierStats();
     }
   }, [user]);
 
@@ -104,6 +108,7 @@ export const SupplierPage: React.FC = () => {
     const timer = setTimeout(() => {
       if (user) {
         fetchSuppliers(searchTerm);
+        fetchSupplierStats(); // Refresh stats when searching
       }
     }, 500);
 
@@ -121,9 +126,10 @@ export const SupplierPage: React.FC = () => {
     setIsLoadingTransactions(true);
     try {
       const transactions = await fetchSupplierTransactions(supplierId);
-      setSupplierTransactions(transactions);
+      setSupplierTransactions(Array.isArray(transactions) ? transactions : []);
     } catch (error) {
       console.error("Error loading transactions:", error);
+      setSupplierTransactions([]);
     } finally {
       setIsLoadingTransactions(false);
     }
@@ -181,6 +187,7 @@ export const SupplierPage: React.FC = () => {
 
     try {
       await addSupplier(formData);
+      await fetchSupplierStats(); // Refresh stats after adding
       toast.success(
         language === "uz" ? "Ta'minotchi qo'shildi" : "Поставщик добавлен",
       );
@@ -211,6 +218,7 @@ export const SupplierPage: React.FC = () => {
         phone: formData.phone,
         company: formData.company,
       });
+      await fetchSupplierStats(); // Refresh stats after updating
       toast.success(
         language === "uz" ? "Ta'minotchi yangilandi" : "Поставщик обновлен",
       );
@@ -227,6 +235,7 @@ export const SupplierPage: React.FC = () => {
 
     try {
       await deleteSupplier(supplierToDelete.id);
+      await fetchSupplierStats(); // Refresh stats after deleting
       toast.success(
         language === "uz" ? "Ta'minotchi o'chirildi" : "Поставщик удален",
       );
@@ -257,8 +266,9 @@ export const SupplierPage: React.FC = () => {
     try {
       await addSupplierPayment(selectedSupplier.id, amount, paymentDescription);
 
-      // Refresh supplier list and transactions
+      // Refresh supplier list, transactions, and stats
       await fetchSuppliers();
+      await fetchSupplierStats();
       await loadSupplierTransactions(selectedSupplier.id);
 
       toast.success(
@@ -637,11 +647,11 @@ export const SupplierPage: React.FC = () => {
         </Dialog>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Statistics Cards - UPDATED to use supplierStats from API */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4 sm:p-6">
-            {isFetchingSuppliers ? (
+            {isFetchingSupplierStats ? (
               <div className="flex items-center justify-center h-20">
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
               </div>
@@ -657,7 +667,7 @@ export const SupplierPage: React.FC = () => {
                       : "Всего поставщиков"}
                   </p>
                   <p className="text-xl sm:text-2xl font-bold">
-                    {suppliers.length}
+                    {supplierStats.total_customers}
                   </p>
                 </div>
               </div>
@@ -667,33 +677,7 @@ export const SupplierPage: React.FC = () => {
 
         <Card>
           <CardContent className="p-4 sm:p-6">
-            {isFetchingSuppliers ? (
-              <div className="flex items-center justify-center h-20">
-                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 sm:gap-4">
-                <div className="rounded-full bg-red-100 dark:bg-red-900/30 p-2 sm:p-3">
-                  <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-red-600 dark:text-red-400" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">
-                    {language === "uz"
-                      ? "Qarzdor ta'minotchilar"
-                      : "Поставщики с долгом"}
-                  </p>
-                  <p className="text-xl sm:text-2xl font-bold">
-                    {suppliers.filter((s) => s.debt > 0).length}
-                  </p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4 sm:p-6">
-            {isFetchingSuppliers ? (
+            {isFetchingSupplierStats ? (
               <div className="flex items-center justify-center h-20">
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
               </div>
@@ -707,10 +691,7 @@ export const SupplierPage: React.FC = () => {
                     {language === "uz" ? "Umumiy qarz" : "Общий долг"}
                   </p>
                   <p className="text-xl sm:text-2xl font-bold text-red-600">
-                    {formatCurrency(
-                      suppliers.reduce((sum, s) => sum + s.debt, 0),
-                    )}{" "}
-                    so'm
+                    {formatCurrency(supplierStats.total_debt)} so'm
                   </p>
                 </div>
               </div>
@@ -859,7 +840,6 @@ export const SupplierPage: React.FC = () => {
                                     )}
                                     className="flex items-center gap-1"
                                   >
-                                    <DollarSign className="h-3 w-3" />
                                     {formatCurrency(
                                       Math.abs(balance.balance),
                                     )}{" "}
@@ -968,55 +948,54 @@ export const SupplierPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Financial Summary - Grid adjusts for mobile */}
+                {/* Financial Summary */}
                 <div>
                   <h3 className="font-semibold mb-2 sm:mb-3 text-sm sm:text-base">
                     {language === "uz"
                       ? "Moliyaviy ma'lumotlar"
                       : "Финансовая информация"}
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
-                    <div className="p-2 sm:p-3 border rounded-lg">
-                      <p className="text-xs text-gray-500">
-                        {language === "uz" ? "Qabul qilingan" : "Принято"}
-                      </p>
-                      <p className="text-base sm:text-lg font-bold text-red-600">
-                        +
-                        {formatCurrency(
-                          getSupplierBalance(selectedSupplier.id)
-                            .totalPurchases,
-                        )}{" "}
-                        so'm
-                      </p>
+                  
+                  {selectedSupplier && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+                      {(() => {
+                        const balance = getSupplierBalance(selectedSupplier.id);
+                        
+                        return (
+                          <>
+                            <div className="p-2 sm:p-3 border rounded-lg">
+                              <p className="text-xs text-gray-500">
+                                {language === "uz" ? "Qabul qilingan" : "Принято"}
+                              </p>
+                              <p className="text-base sm:text-lg font-bold text-red-600">
+                                +{formatCurrency(balance.totalPurchases)} so'm
+                              </p>
+                            </div>
+                            <div className="p-2 sm:p-3 border rounded-lg">
+                              <p className="text-xs text-gray-500">
+                                {language === "uz" ? "To'langan" : "Оплачено"}
+                              </p>
+                              <p className="text-base sm:text-lg font-bold text-green-600">
+                                -{formatCurrency(balance.totalPayments)} so'm
+                              </p>
+                            </div>
+                            <div className="p-2 sm:p-3 border rounded-lg">
+                              <p className="text-xs text-gray-500">
+                                {language === "uz" ? "Qoldiq" : "Остаток"}
+                              </p>
+                              <p
+                                className={`text-base sm:text-lg font-bold ${
+                                  balance.balance > 0 ? "text-red-600" : "text-green-600"
+                                }`}
+                              >
+                                {formatCurrency(Math.abs(balance.balance))} so'm
+                              </p>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
-                    <div className="p-2 sm:p-3 border rounded-lg">
-                      <p className="text-xs text-gray-500">
-                        {language === "uz" ? "To'langan" : "Оплачено"}
-                      </p>
-                      <p className="text-base sm:text-lg font-bold text-green-600">
-                        -
-                        {formatCurrency(
-                          getSupplierBalance(selectedSupplier.id).totalPayments,
-                        )}{" "}
-                        so'm
-                      </p>
-                    </div>
-                    <div className="p-2 sm:p-3 border rounded-lg">
-                      <p className="text-xs text-gray-500">
-                        {language === "uz" ? "Qoldiq" : "Остаток"}
-                      </p>
-                      <p
-                        className={`text-base sm:text-lg font-bold ${getSupplierBalance(selectedSupplier.id).balance > 0 ? "text-red-600" : "text-green-600"}`}
-                      >
-                        {formatCurrency(
-                          Math.abs(
-                            getSupplierBalance(selectedSupplier.id).balance,
-                          ),
-                        )}{" "}
-                        so'm
-                      </p>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Transaction History - Scrollable on mobile */}
@@ -1256,8 +1235,6 @@ export const SupplierPage: React.FC = () => {
                   disabled={isAddingSupplierPayment}
                 />
               </div>
-
-              
             </div>
           )}
           <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4">

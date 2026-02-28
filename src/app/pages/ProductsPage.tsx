@@ -7,14 +7,12 @@ import { Input } from '../components/ui/input';
 import { Card, CardContent, CardFooter, CardHeader } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { Search, ShoppingCart, Package, Loader2 } from 'lucide-react';
+import { Search, ShoppingCart, Package, Loader2, ChevronLeft, ChevronRight, Palette } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 
-// Local storage key
 const CART_STORAGE_KEY = 'app_cart';
 
-// Map quality name to API quality value
 const mapQualityToApiValue = (qualityName: string): 'standard' | 'economic' | 'premium' | undefined => {
   const lowerName = qualityName.toLowerCase();
   if (lowerName.includes('premium')) return 'premium';
@@ -23,9 +21,20 @@ const mapQualityToApiValue = (qualityName: string): 'standard' | 'economic' | 'p
   return undefined;
 };
 
+const getContrastColor = (hexColor: string) => {
+  if (!hexColor || hexColor === '#CCCCCC') return '#000000';
+  const color = hexColor.replace('#', '');
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 128 ? '#000000' : '#FFFFFF';
+};
+
 export const ProductsPage: React.FC = () => {
   const { 
     products = [], 
+    totalProducts = 0,
     addToCart, 
     language, 
     cart = [],
@@ -44,15 +53,49 @@ export const ProductsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [selectedQualityId, setSelectedQualityId] = useState<string>('all');
+  
+  // Pagination state - ALWAYS 28 products per page
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [limit] = useState<number>(28); // Force 28 products per page
+
   const [isAddingToCart, setIsAddingToCart] = useState<Record<number, boolean>>({});
   const [localCart, setLocalCart] = useState<CartItem[]>([]);
   const navigate = useNavigate();
-  
-  // Use refs to track initial load and prevent double fetches
+
   const initialLoadDone = useRef(false);
-  const filtersRef = useRef({ search: '', category: 'all', quality: 'all' });
+  const filtersRef = useRef({ 
+    search: '', 
+    category: 'all', 
+    quality: 'all', 
+    page: 1, 
+    limit: 28 // Always 28
+  });
+
+  // Use a ref to track the last known totalProducts
+  const lastTotalProducts = useRef(totalProducts);
+
+  // Update ref when totalProducts changes
+  useEffect(() => {
+    if (totalProducts > 0) {
+      lastTotalProducts.current = totalProducts;
+      console.log("📊 totalProducts updated to:", totalProducts);
+    }
+  }, [totalProducts]);
 
   const t = (key: string) => getTranslation(language, key as any);
+
+  // Calculate effective total - use current totalProducts, or fallback to last known
+  const effectiveTotalProducts = totalProducts > 0 ? totalProducts : lastTotalProducts.current;
+  const totalPages = Math.ceil(effectiveTotalProducts / limit);
+
+  // Debug logs
+  console.log('📊 totalProducts from context:', totalProducts);
+  console.log('📦 products.length:', products.length);
+  console.log('📄 currentPage:', currentPage);
+  console.log('💾 lastTotalProducts:', lastTotalProducts.current);
+  console.log('🔢 effectiveTotalProducts:', effectiveTotalProducts);
+  console.log('🔢 totalPages:', totalPages);
+  console.log('🎯 showPagination:', totalPages > 1);
 
   // Load cart from localStorage on mount
   useEffect(() => {
@@ -67,7 +110,7 @@ export const ProductsPage: React.FC = () => {
     }
   }, []);
 
-  // Save cart to localStorage whenever it changes
+  // Save cart to localStorage
   useEffect(() => {
     if (localCart.length > 0) {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(localCart));
@@ -83,58 +126,74 @@ export const ProductsPage: React.FC = () => {
     }
   }, [cart]);
 
-  // Initial data fetch - only once when user is available
+  // Initial data fetch - IMPORTANT: Always use limit 28
   useEffect(() => {
     if (user && !initialLoadDone.current) {
       initialLoadDone.current = true;
-      
-      // Fetch all data in parallel
       const fetchInitialData = async () => {
         try {
           await Promise.all([
             fetchCategories(),
             fetchQualities(),
-            fetchProducts(),
+            // CRITICAL: Always fetch with page=1 and limit=28, never rely on default
+            fetchProducts({ page: 1, limit: 28 }),
             fetchBasket()
           ]);
         } catch (error) {
           console.error('Error fetching initial data:', error);
         }
       };
-      
       fetchInitialData();
     }
-  }, [user]); // Only depends on user
+  }, [user, fetchProducts, fetchCategories, fetchQualities, fetchBasket]);
 
-  // Handle filters with debounce - but only after initial load
+  // Handle filters and pagination - ALWAYS include limit
   useEffect(() => {
     if (!user || !initialLoadDone.current) return;
 
     const currentFilters = {
       search: searchQuery,
       category: selectedCategoryId,
-      quality: selectedQualityId
+      quality: selectedQualityId,
+      page: currentPage,
+      limit: limit // Always include limit
     };
 
     // Check if filters actually changed
     if (
       filtersRef.current.search === currentFilters.search &&
       filtersRef.current.category === currentFilters.category &&
-      filtersRef.current.quality === currentFilters.quality
+      filtersRef.current.quality === currentFilters.quality &&
+      filtersRef.current.page === currentFilters.page &&
+      filtersRef.current.limit === currentFilters.limit
     ) {
-      return; // No change, don't fetch
+      return;
+    }
+
+    // If search, category, or quality filters change, reset to page 1
+    if (
+      filtersRef.current.search !== currentFilters.search ||
+      filtersRef.current.category !== currentFilters.category ||
+      filtersRef.current.quality !== currentFilters.quality
+    ) {
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+        return;
+      }
     }
 
     filtersRef.current = currentFilters;
 
-    const filters: any = {};
+    // Build filters object - ALWAYS include page and limit
+    const filters: any = { 
+      page: currentPage,
+      limit: limit // CRITICAL: Always send limit
+    };
     
     if (searchQuery) filters.search = searchQuery;
-    
     if (selectedCategoryId !== 'all') {
       filters.category = parseInt(selectedCategoryId);
     }
-    
     if (selectedQualityId !== 'all') {
       const selectedQuality = qualities.find(q => q.id.toString() === selectedQualityId);
       if (selectedQuality) {
@@ -145,31 +204,31 @@ export const ProductsPage: React.FC = () => {
       }
     }
     
-    // Debounce search
     const timeoutId = setTimeout(() => {
+      console.log('🔍 Fetching with filters:', filters);
       fetchProducts(filters);
     }, 500);
     
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, selectedCategoryId, selectedQualityId, user, qualities]);
+  }, [searchQuery, selectedCategoryId, selectedQualityId, currentPage, limit, user, qualities, fetchProducts]);
+
+  // Add this effect to detect when products change and log the count
+  useEffect(() => {
+    console.log(`📦 Page ${currentPage} loaded with ${products.length} products`);
+  }, [products, currentPage]);
 
   const handleAddToCart = async (product: Product) => {
     setIsAddingToCart(prev => ({ ...prev, [product.id]: true }));
     
     try {
-      // Check if product already exists in cart (from context)
       const existingItem = cart.find(item => item.product.id === product.id);
-      
       if (existingItem) {
-        toast.info(language === 'uz' 
-          ? 'Bu mahsulot allaqachon savatda' 
-          : 'Этот продукт уже в корзине');
+        toast.info(language === 'uz' ? 'Bu mahsulot allaqachon savatda' : 'Этот продукт уже в корзине');
         return;
       }
       
       await addToCart(product);
       
-      // Update local storage for offline support
       const newLocalItem: CartItem = {
         id: `${Date.now()}-${product.id}`,
         product,
@@ -182,9 +241,7 @@ export const ProductsPage: React.FC = () => {
       
       toast.success(t('addedToCart'));
     } catch (error) {
-      toast.error(language === 'uz' 
-        ? 'Savatchaga qo\'shishda xatolik yuz berdi' 
-        : 'Ошибка при добавлении в корзину');
+      toast.error(language === 'uz' ? 'Savatchaga qo\'shishda xatolik yuz berdi' : 'Ошибка при добавлении в корзину');
     } finally {
       setIsAddingToCart(prev => ({ ...prev, [product.id]: false }));
     }
@@ -192,34 +249,47 @@ export const ProductsPage: React.FC = () => {
 
   const getQualityTranslation = (quality: string) => {
     switch (quality?.toLowerCase()) {
-      case 'premium':
-        return language === 'uz' ? 'Premium' : 'Премиум';
-      case 'economic':
-        return language === 'uz' ? 'Economic' : 'Эконом';
-      default:
-        return language === 'uz' ? 'Standart' : 'Стандарт';
+      case 'premium': return language === 'uz' ? 'Premium' : 'Премиум';
+      case 'economic': return language === 'uz' ? 'Economic' : 'Эконом';
+      default: return language === 'uz' ? 'Standart' : 'Стандарт';
     }
   };
 
-  // Get quality name by ID
   const getQualityNameById = (qualityId: number): string => {
     const quality = qualities.find(q => q.id === qualityId);
     return quality?.name || '';
   };
 
-  // Merge context cart with local cart for display
-  const displayCart = cart.length > 0 ? cart : localCart;
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-  // Loading state
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      handlePageChange(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      handlePageChange(currentPage + 1);
+    }
+  };
+
+  const displayCart = cart.length > 0 ? cart : localCart;
+  
   const isLoading = isFetchingProducts || isFetchingCategories || isFetchingQualities;
+
+  // Calculate displayed range
+  const startItem = effectiveTotalProducts > 0 ? (currentPage - 1) * limit + 1 : 0;
+  const endItem = Math.min(currentPage * limit, effectiveTotalProducts);
 
   if (!user) {
     return (
       <div className="flex justify-center items-center py-12">
         <p className="text-gray-500">
-          {language === 'uz' 
-            ? 'Mahsulotlarni ko\'rish uchun tizimga kiring' 
-            : 'Войдите в систему чтобы просмотреть продукты'}
+          {language === 'uz' ? 'Mahsulotlarni ko\'rish uchun tizimga kiring' : 'Войдите в систему чтобы просмотреть продукты'}
         </p>
       </div>
     );
@@ -227,12 +297,13 @@ export const ProductsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Rest of your JSX remains exactly the same */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{t('products')}</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            {language === 'uz' ? 'Mahsulotlarni tanlang va savatchaga qo\'shing' : 'Выберите продукты и добавьте в корзину'}
+            {language === 'uz' 
+              ? `Mahsulotlarni tanlang va savatchaga qo'shing (Jami: ${effectiveTotalProducts} ta mahsulot)` 
+              : `Выберите продукты и добавьте в корзину (Всего: ${effectiveTotalProducts} продуктов)`}
           </p>
         </div>
         <Button size="lg" onClick={() => navigate('/cart')} className="relative">
@@ -259,47 +330,32 @@ export const ProductsPage: React.FC = () => {
               />
             </div>
             
-            <Select 
-              value={selectedCategoryId} 
-              onValueChange={setSelectedCategoryId}
-              disabled={isFetchingCategories}
-            >
+            <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId} disabled={isFetchingCategories}>
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder={language === 'uz' ? 'Kategoriya' : 'Категория'} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">
-                  {language === 'uz' ? 'Barcha kategoriyalar' : 'Все категории'}
-                </SelectItem>
+                <SelectItem value="all">{language === 'uz' ? 'Barcha kategoriyalar' : 'Все категории'}</SelectItem>
                 {categories.map(cat => (
-                  <SelectItem key={cat.id} value={cat.id.toString()}>
-                    {cat.name}
-                  </SelectItem>
+                  <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             
-            <Select 
-              value={selectedQualityId} 
-              onValueChange={setSelectedQualityId}
-              disabled={isFetchingQualities}
-            >
+            <Select value={selectedQualityId} onValueChange={setSelectedQualityId} disabled={isFetchingQualities}>
               <SelectTrigger className="w-full sm:w-48">
                 <SelectValue placeholder={language === 'uz' ? 'Sifat' : 'Качество'} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">
-                  {language === 'uz' ? 'Barcha sifatlar' : 'Все качества'}
-                </SelectItem>
+                <SelectItem value="all">{language === 'uz' ? 'Barcha sifatlar' : 'Все качества'}</SelectItem>
                 {qualities.map(quality => (
-                  <SelectItem key={quality.id} value={quality.id.toString()}>
-                    {quality.name}
-                  </SelectItem>
+                  <SelectItem key={quality.id} value={quality.id.toString()}>{quality.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         </CardHeader>
+        
         <CardContent>
           {isLoading && products.length === 0 ? (
             <div className="flex justify-center items-center py-12">
@@ -316,79 +372,156 @@ export const ProductsPage: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {products.map((product) => {
-                const isInCart = displayCart.some((item: CartItem) => item.product?.id === product.id);
-                const isAdding = isAddingToCart[product.id];
-                const qualityName = getQualityNameById(product.quality as any);
-                
-                return (
-                  <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                    <div className="h-[150px] relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
-                      <div 
-                        className="h-[100%] w-[100%] object-cover"
-                        style={{ backgroundColor: product.color }}
-                      />
-                    </div>
-                    <CardHeader className="">
-                      <div className="">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-semibold text-lg leading-tight">{product.name}</h3>
-                          <Badge variant="secondary">{product.category}</Badge>
-                        </div>
-                        <div className=" text-sm text-gray-600 dark:text-gray-400">
-                          <p>{product.width} × {product.height} mm</p>
-                          <p>{t('thickness')}: {product.thickness} mm</p>
-                          <p>{t('quality')}: {qualityName || getQualityTranslation(product.quality)}</p>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardFooter className="flex flex-col gap-3 pt-0">
-                      <div className="flex w-full items-center justify-between">
-                        <div>
-                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                            {product.unitPrice?.toLocaleString() || '0'}
-                          </p>
-                          <p className="text-xs text-gray-500">UZS</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-600 dark:text-gray-400">{t('stock')}</p>
-                          <Badge variant={(product.stockQuantity || 0) < 20 ? 'destructive' : 'default'}>
-                            {product.stockQuantity || 0}
-                          </Badge>
-                        </div>
+            <>
+              {/* Products Grid */}
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {products.map((product) => {
+                  const isInCart = displayCart.some((item: CartItem) => item.product?.id === product.id);
+                  const isAdding = isAddingToCart[product.id];
+                  const qualityName = getQualityNameById(product.quality as any);
+                  
+                  return (
+                    <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow relative">
+                    
+                      
+                      {/* Image Container */}
+                      <div className="h-[150px] relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
+                        {product.image ? (
+                          <img 
+                            src={product.image} 
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const parent = e.currentTarget.parentElement;
+                              if (parent) {
+                                const fallbackDiv = document.createElement('div');
+                                fallbackDiv.className = 'w-full h-full';
+                                fallbackDiv.style.backgroundColor = product.color || '#e5e7eb';
+                                parent.appendChild(fallbackDiv);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <div 
+                            className="w-full h-full"
+                            style={{ backgroundColor: product.color || '#e5e7eb' }}
+                          />
+                        )}
                       </div>
                       
-                      {isInCart ? (
-                        <Button 
-                          className="w-full" 
-                          variant="outline"
-                          onClick={() => navigate('/cart')}
-                        >
-                          <ShoppingCart className="mr-2 h-4 w-4" />
-                          {language === 'uz' ? 'Savatda' : 'В корзине'}
-                        </Button>
-                      ) : (
-                        <Button 
-                          className="w-full" 
-                          onClick={() => handleAddToCart(product)}
-                          disabled={(product.stockQuantity || 0) === 0 || isAdding}
-                        >
-                          {isAdding ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
+                      <CardHeader>
+                        <div>
+                            <h3 className="w-[220px] font-semibold text-lg leading-tight truncate" title={product.name}>
+                              {product.name}
+                            </h3>
+                          <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                            <p>{product.width} × {product.height} mm</p>
+                            <p>{t('thickness')}: {product.thickness} mm</p>
+                            <p>{t('quality')}: {qualityName || getQualityTranslation(product.quality as string)}</p>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      
+                      <CardFooter className="flex flex-col gap-3 pt-0">
+                        <div className="flex w-full items-center justify-between">
+                          <div>
+                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                              {product.unitPrice?.toLocaleString() || '0'}
+                            </p>
+                            <p className="text-xs text-gray-500">UZS</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">{t('stock')}</p>
+                            <Badge variant={(product.stockQuantity || 0) < 20 ? 'destructive' : 'default'}>
+                              {product.stockQuantity || 0}
+                            </Badge>
+                          </div>
+                        </div>
+                        
+                        {isInCart ? (
+                          <Button className="w-full" variant="outline" onClick={() => navigate('/cart')}>
                             <ShoppingCart className="mr-2 h-4 w-4" />
-                          )}
-                          {(product.stockQuantity || 0) === 0 ? t('outOfStock') : 
-                           isAdding ? (language === 'uz' ? 'Qo\'shilmoqda...' : 'Добавление...') : 
-                           t('addToCart')}
-                        </Button>
-                      )}
-                    </CardFooter>
-                  </Card>
-                );
-              })}
-            </div>
+                            {language === 'uz' ? 'Savatda' : 'В корзине'}
+                          </Button>
+                        ) : (
+                          <Button 
+                            className="w-full" 
+                            onClick={() => handleAddToCart(product)}
+                            disabled={(product.stockQuantity || 0) === 0 || isAdding}
+                          >
+                            {isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShoppingCart className="mr-2 h-4 w-4" />}
+                            {(product.stockQuantity || 0) === 0 ? t('outOfStock') : 
+                             isAdding ? (language === 'uz' ? 'Qo\'shilmoqda...' : 'Добавление...') : t('addToCart')}
+                          </Button>
+                        )}
+                      </CardFooter>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex flex-col items-center gap-4 mt-8 pt-4 border-t">
+                
+                  
+                  {/* Pagination buttons */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePreviousPage}
+                      disabled={currentPage === 1 || isFetchingProducts}
+                      className="min-w-[100px]"
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      {language === 'uz' ? 'Oldingi' : 'Назад'}
+                    </Button>
+                    
+                    {/* Page numbers */}
+                    <div className="flex items-center gap-1 mx-2">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handlePageChange(pageNum)}
+                            disabled={isFetchingProducts}
+                            className="w-10"
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleNextPage}
+                      disabled={currentPage === totalPages || isFetchingProducts}
+                      className="min-w-[100px]"
+                    >
+                      {language === 'uz' ? 'Keyingi' : 'Вперед'}
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

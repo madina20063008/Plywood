@@ -6,7 +6,6 @@ import { LoginPage } from './components/LoginPage';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { DashboardPage } from './pages/DashboardPage';
-import { ProductsPage } from './pages/ProductsPage';
 import { CartPage } from './pages/CartPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { UsersPage } from './pages/UsersPage';
@@ -18,6 +17,7 @@ import { ProductCreationPage } from './pages/ProductCreationPage';
 import { ProductReceivingPage } from './pages/ProductReceivingPage';
 import Services from './pages/Services';
 import SupplierPage from './pages/SupplierPage';
+import { ProductsPage } from './pages/ProductsPage';
 
 export default function App() {
   return (

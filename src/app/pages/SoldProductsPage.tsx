@@ -419,7 +419,7 @@ export const SoldProductsPage: React.FC = () => {
     );
   };
 
-  // Function to render cutting service details
+  // Function to render cutting service details - FIXED for the correct structure
   const renderCuttingDetails = (cutting: any) => {
     if (!cutting) return null;
     
@@ -447,7 +447,7 @@ export const SoldProductsPage: React.FC = () => {
     );
   };
 
-  // Function to render banding service details
+  // Function to render banding service details - FIXED for the correct structure
   const renderBandingDetails = (banding: any) => {
     if (!banding) return null;
     
@@ -476,9 +476,30 @@ export const SoldProductsPage: React.FC = () => {
             <span className="text-gray-500">{language === 'uz' ? 'Bo\'yi' : 'Высота'}:</span>
             <span className="ml-1 font-medium">{banding.height} mm</span>
           </div>
+          <div className="col-span-2">
+            <span className="text-gray-500">{language === 'uz' ? 'Jami' : 'Итого'}:</span>
+            <span className="ml-1 font-medium">{formatCurrency(banding.total_price)} UZS</span>
+          </div>
         </div>
       </div>
     );
+  };
+
+  // Function to calculate total with services
+  const calculateTotalWithServices = (order: ApiOrder) => {
+    let total = parseFloat(order.total_price);
+    
+    // Add cutting service if exists
+    if (order.cutting) {
+      total += order.cutting.total_price;
+    }
+    
+    // Add banding service if exists
+    if (order.banding) {
+      total += order.banding.total_price;
+    }
+    
+    return total;
   };
 
   return (
@@ -622,7 +643,7 @@ export const SoldProductsPage: React.FC = () => {
                               #{order.id}
                             </Badge>
                             
-                            {/* Customer Info - FIXED: Show customer_fullname if available */}
+                            {/* Customer Info */}
                             {isAnonymous ? (
                               <Badge variant="secondary" className="flex items-center gap-1 text-xs">
                                 <User className="h-3 w-3" />
@@ -637,6 +658,20 @@ export const SoldProductsPage: React.FC = () => {
                             
                             {/* Payment Method Badge */}
                             {getPaymentMethodBadge(order.payment_method)}
+                            
+                            {/* Service Badges */}
+                            {order.cutting && (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 border-blue-200 dark:border-blue-800 text-[10px] sm:text-xs">
+                                <Scissors className="h-3 w-3 mr-1" />
+                                {language === 'uz' ? 'Kesish' : 'Распил'}
+                              </Badge>
+                            )}
+                            {order.banding && (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300 border-green-200 dark:border-green-800 text-[10px] sm:text-xs">
+                                <Layers className="h-3 w-3 mr-1" />
+                                {language === 'uz' ? 'Kromka' : 'Кромка'}
+                              </Badge>
+                            )}
                           </div>
                           
                           {/* Date and Time */}
@@ -653,6 +688,12 @@ export const SoldProductsPage: React.FC = () => {
                             <span>
                               {order.items.length} {language === 'uz' ? 'mahsulot' : 'товаров'}
                             </span>
+                            {order.cutting && (
+                              <span className="ml-2 text-blue-600">+ Kesish</span>
+                            )}
+                            {order.banding && (
+                              <span className="ml-2 text-green-600">+ Kromka</span>
+                            )}
                           </div>
                         </div>
                         
@@ -675,7 +716,7 @@ export const SoldProductsPage: React.FC = () => {
                                   {language === 'uz' ? 'Qarz' : 'Долг'}: 
                                 </span>
                                 <span className="ml-1 font-medium text-red-600">
-                                  {(parseFloat(order.total_price) - parseFloat(order.covered_amount)).toLocaleString()} UZS
+                                  {formatCurrency(parseFloat(order.total_price) - parseFloat(order.covered_amount))} UZS
                                 </span>
                               </div>
                             )}
@@ -751,18 +792,29 @@ export const SoldProductsPage: React.FC = () => {
                             </h4>
                             <div className="space-y-2">
                               {order.items.map((item, index) => (
-                                <div key={index} className="space-y-2">
+                                <div key={index}>
                                   {renderProductDetails(item)}
-                                  
-                                  {/* Cutting Service */}
-                                  {item.cutting && renderCuttingDetails(item.cutting)}
-                                  
-                                  {/* Banding Service */}
-                                  {item.banding && renderBandingDetails(item.banding)}
                                 </div>
                               ))}
                             </div>
                           </div>
+                          
+                          {/* Services Section - FIXED: Show cutting and banding at order level */}
+                          {(order.cutting || order.banding) && (
+                            <div>
+                              <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                                <Tag className="h-3 w-3" />
+                                {language === 'uz' ? 'Qo\'shimcha xizmatlar' : 'Дополнительные услуги'}
+                              </h4>
+                              <div className="space-y-2">
+                                {/* Cutting Service */}
+                                {order.cutting && renderCuttingDetails(order.cutting)}
+                                
+                                {/* Banding Service */}
+                                {order.banding && renderBandingDetails(order.banding)}
+                              </div>
+                            </div>
+                          )}
                           
                           {/* Order Summary */}
                           <div className="bg-white dark:bg-gray-900 p-3 rounded-lg">
@@ -772,18 +824,33 @@ export const SoldProductsPage: React.FC = () => {
                             <div className="space-y-1 text-xs">
                               <div className="flex justify-between">
                                 <span className="text-gray-500">{t('subtotal')}</span>
-                                <span>{(parseFloat(order.total_price) + parseFloat(order.discount)).toLocaleString()} UZS</span>
+                                <span>{formatCurrency(parseFloat(order.total_price) + parseFloat(order.discount))} UZS</span>
                               </div>
+                              
+                              {/* Show services separately if they exist */}
+                              {order.cutting && (
+                                <div className="flex justify-between text-blue-600">
+                                  <span>{language === 'uz' ? 'Kesish xizmati' : 'Услуга распила'}</span>
+                                  <span>{formatCurrency(order.cutting.total_price)} UZS</span>
+                                </div>
+                              )}
+                              {order.banding && (
+                                <div className="flex justify-between text-green-600">
+                                  <span>{language === 'uz' ? 'Kromkalash xizmati' : 'Услуга кромкования'}</span>
+                                  <span>{formatCurrency(order.banding.total_price)} UZS</span>
+                                </div>
+                              )}
+                              
                               {parseFloat(order.discount) > 0 && (
                                 <div className="flex justify-between text-green-600">
                                   <span>{t('discount')}</span>
-                                  <span>-{parseFloat(order.discount).toLocaleString()} UZS</span>
+                                  <span>-{formatCurrency(order.discount)} UZS</span>
                                 </div>
                               )}
                               <Separator className="my-1" />
                               <div className="flex justify-between font-bold">
                                 <span>{t('total')}</span>
-                                <span className="text-blue-600">{parseFloat(order.total_price).toLocaleString()} UZS</span>
+                                <span className="text-blue-600">{formatCurrency(order.total_price)} UZS</span>
                               </div>
                             </div>
                           </div>
@@ -801,7 +868,7 @@ export const SoldProductsPage: React.FC = () => {
                                     {language === 'uz' ? 'To\'langan summa' : 'Оплаченная сумма'}
                                   </span>
                                   <span className="font-medium text-green-600">
-                                    {parseFloat(order.covered_amount).toLocaleString()} UZS
+                                    {formatCurrency(order.covered_amount)} UZS
                                   </span>
                                 </div>
                                 <div className="flex justify-between">
@@ -809,7 +876,7 @@ export const SoldProductsPage: React.FC = () => {
                                     {language === 'uz' ? 'Qolgan qarz' : 'Оставшийся долг'}
                                   </span>
                                   <span className="font-medium text-red-600">
-                                    {(parseFloat(order.total_price) - parseFloat(order.covered_amount)).toLocaleString()} UZS
+                                    {formatCurrency(parseFloat(order.total_price) - parseFloat(order.covered_amount))} UZS
                                   </span>
                                 </div>
                               </div>
@@ -1048,46 +1115,69 @@ export const SoldProductsPage: React.FC = () => {
                 <h3 className="text-sm font-medium mb-2">{language === 'uz' ? 'Mahsulotlar' : 'Товары'}</h3>
                 <div className="space-y-2">
                   {selectedOrder.items.map((item, index) => (
-                    <div key={index} className="space-y-2">
+                    <div key={index}>
                       {renderProductDetails(item)}
-                      
-                      {/* Cutting Service */}
-                      {item.cutting && renderCuttingDetails(item.cutting)}
-                      
-                      {/* Banding Service */}
-                      {item.banding && renderBandingDetails(item.banding)}
                     </div>
                   ))}
                 </div>
               </div>
+
+              {/* Services Section in Details Dialog */}
+              {(selectedOrder.cutting || selectedOrder.banding) && (
+                <>
+                  <Separator />
+                  <div>
+                    <h3 className="text-sm font-medium mb-2">{language === 'uz' ? 'Qo\'shimcha xizmatlar' : 'Дополнительные услуги'}</h3>
+                    <div className="space-y-2">
+                      {selectedOrder.cutting && renderCuttingDetails(selectedOrder.cutting)}
+                      {selectedOrder.banding && renderBandingDetails(selectedOrder.banding)}
+                    </div>
+                  </div>
+                </>
+              )}
 
               <Separator />
 
               <div className="space-y-1 sm:space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">{t('subtotal')}</span>
-                  <span>{(parseFloat(selectedOrder.total_price) + parseFloat(selectedOrder.discount)).toLocaleString()} UZS</span>
+                  <span>{formatCurrency(parseFloat(selectedOrder.total_price) + parseFloat(selectedOrder.discount))} UZS</span>
                 </div>
+                
+                {/* Show services in summary */}
+                {selectedOrder.cutting && (
+                  <div className="flex justify-between text-sm text-blue-600">
+                    <span>{language === 'uz' ? 'Kesish xizmati' : 'Услуга распила'}</span>
+                    <span>{formatCurrency(selectedOrder.cutting.total_price)} UZS</span>
+                  </div>
+                )}
+                {selectedOrder.banding && (
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span>{language === 'uz' ? 'Kromkalash xizmati' : 'Услуга кромкования'}</span>
+                    <span>{formatCurrency(selectedOrder.banding.total_price)} UZS</span>
+                  </div>
+                )}
+                
                 {parseFloat(selectedOrder.discount) > 0 && (
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">{t('discount')}</span>
-                    <span className="text-green-600">-{parseFloat(selectedOrder.discount).toLocaleString()} UZS</span>
+                    <span className="text-green-600">-{formatCurrency(selectedOrder.discount)} UZS</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold text-base sm:text-lg">
                   <span>{t('total')}</span>
-                  <span className="text-blue-600">{parseFloat(selectedOrder.total_price).toLocaleString()} UZS</span>
+                  <span className="text-blue-600">{formatCurrency(selectedOrder.total_price)} UZS</span>
                 </div>
                 
                 {selectedOrder.payment_method === 'nasiya' && (
                   <>
                     <div className="flex justify-between pt-2 text-sm">
                       <span className="text-gray-500">{language === 'uz' ? 'To\'langan' : 'Оплачено'}</span>
-                      <span className="text-green-600">{parseFloat(selectedOrder.covered_amount).toLocaleString()} UZS</span>
+                      <span className="text-green-600">{formatCurrency(selectedOrder.covered_amount)} UZS</span>
                     </div>
                     <div className="flex justify-between font-medium text-sm text-yellow-600">
                       <span>{language === 'uz' ? 'Qarz' : 'Долг'}</span>
-                      <span>{(parseFloat(selectedOrder.total_price) - parseFloat(selectedOrder.covered_amount)).toLocaleString()} UZS</span>
+                      <span>{formatCurrency(parseFloat(selectedOrder.total_price) - parseFloat(selectedOrder.covered_amount))} UZS</span>
                     </div>
                   </>
                 )}
@@ -1217,12 +1307,12 @@ export const SoldProductsPage: React.FC = () => {
               <div className="space-y-1 sm:space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">{t('total')}</span>
-                  <span className="font-bold">{parseFloat(selectedOrder.total_price).toLocaleString()} UZS</span>
+                  <span className="font-bold">{formatCurrency(selectedOrder.total_price)} UZS</span>
                 </div>
                 {paymentMethod === 'nasiya' && (
                   <div className="flex justify-between text-sm text-yellow-600">
                     <span>{language === 'uz' ? 'Qarz' : 'Долг'}</span>
-                    <span>{Math.max(0, parseFloat(selectedOrder.total_price) - amountPaid).toLocaleString()} UZS</span>
+                    <span>{formatCurrency(Math.max(0, parseFloat(selectedOrder.total_price) - amountPaid))} UZS</span>
                   </div>
                 )}
               </div>

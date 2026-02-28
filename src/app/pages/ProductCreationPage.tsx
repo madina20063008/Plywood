@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { ArrowLeft, Plus, Loader2 } from 'lucide-react';
+import { ArrowLeft, Plus, Loader2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Map API quality name to our app's quality values
@@ -57,6 +57,8 @@ export const ProductCreationPage: React.FC = () => {
     thickness: '',
     quality: 'standard' as 'standard' | 'economic' | 'premium',
     description: '',
+    image: null as File | null,
+    imagePreview: null as string | null,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -92,6 +94,8 @@ export const ProductCreationPage: React.FC = () => {
       thickness: '',
       quality: 'standard',
       description: '',
+      image: null,
+      imagePreview: null,
     });
     setErrors({});
   };
@@ -170,56 +174,110 @@ export const ProductCreationPage: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
-      toast.error(language === 'uz' 
-        ? 'Formani to\'g\'ri to\'ldiring'
-        : 'Заполните форму правильно'
-      );
-      return;
-    }
-    
-    try {
-      // Convert string values to numbers for the API
-      await addProduct({
-        id: formData.id,
-        name: formData.name,
-        category: formData.category,
-        color: formData.color,
-        width: Number(formData.width),
-        height: Number(formData.height),
-        thickness: Number(formData.thickness),
-        quality: formData.quality,
-        description: formData.description,
-        unitPrice: 0,
-        stockQuantity: 0,
-        purchasePrice: 0,
-      });
-      
-      toast.success(language === 'uz' 
-        ? 'Mahsulot muvaffaqiyatli yaratildi'
-        : 'Продукт успешно создан'
-      );
-      
-      toast.info(language === 'uz' 
-        ? 'Kelish narxi va miqdorini "Mahsulot qabul qilish" sahifasida kiriting.'
-        : 'Введите цену поступления и количество на странице "Приём товара".',
-        { duration: 5000 }
-      );
-      
-      setTimeout(() => {
-        navigate('/inventory');
-      }, 2000);
-      
-    } catch (error) {
-      console.error('Product creation error:', error);
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(language === 'uz' 
+          ? 'Rasm hajmi 5MB dan kichik bo\'lishi kerak'
+          : 'Размер изображения должен быть меньше 5MB');
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        toast.error(language === 'uz' 
+          ? 'Faqat rasm fayllari qabul qilinadi'
+          : 'Принимаются только файлы изображений');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({
+          ...prev,
+          image: file,
+          imagePreview: reader.result as string
+        }));
+      };
+      reader.readAsDataURL(file);
     }
   };
 
+  const handleRemoveImage = () => {
+    setFormData(prev => ({
+      ...prev,
+      image: null,
+      imagePreview: null
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  if (!validateForm()) {
+    toast.error(language === 'uz' 
+      ? 'Formani to\'g\'ri to\'ldiring'
+      : 'Заполните форму правильно'
+    );
+    return;
+  }
+  
+  try {
+    // Create FormData for multipart/form-data submission
+    const formDataToSend = new FormData();
+    
+    // Append all fields
+    formDataToSend.append('name', formData.name.trim());
+    formDataToSend.append('color', formData.color);
+    formDataToSend.append('quality', formData.quality);
+    formDataToSend.append('width', formData.width || '0');
+    formDataToSend.append('height', formData.height || '0');
+    formDataToSend.append('thick', formData.thickness || '0'); // API expects 'thick'
+    formDataToSend.append('description', formData.description || '');
+    
+    // Get category ID from name
+    const category = categories.find(c => c.name === formData.category);
+    if (category) {
+      formDataToSend.append('category', category.id.toString());
+    } else {
+      toast.error(language === 'uz' 
+        ? 'Kategoriya topilmadi'
+        : 'Категория не найдена');
+      return;
+    }
+    
+    // Append image if exists
+    if (formData.image) {
+      formDataToSend.append('image', formData.image);
+    }
+    
+    // Log FormData contents for debugging
+    console.log('Sending FormData:');
+    for (let pair of formDataToSend.entries()) {
+      console.log(pair[0] + ': ' + (pair[0] === 'image' ? '[File]' : pair[1]));
+    }
+    
+    // Pass FormData directly - don't wrap it or modify it
+    await addProduct(formDataToSend);
+    
+    toast.success(language === 'uz' 
+      ? 'Mahsulot muvaffaqiyatli yaratildi'
+      : 'Продукт успешно создан'
+    );
+    
+    setTimeout(() => {
+      navigate('/inventory');
+    }, 2000);
+    
+  } catch (error) {
+    console.error('Product creation error:', error);
+  }
+};
+
   const handleCancel = () => {
-    if (formData.name || formData.description || formData.width !== '' || formData.height !== '' || formData.thickness !== '') {
+    if (formData.name || formData.description || formData.width !== '' || formData.height !== '' || formData.thickness !== '' || formData.image) {
       if (window.confirm(language === 'uz' 
         ? 'O\'zgarishlar saqlanmaydi. Chiqishni xohlaysizmi?'
         : 'Изменения не будут сохранены. Вы хотите выйти?'
@@ -382,6 +440,60 @@ export const ProductCreationPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Image Upload */}
+            <div>
+              <Label htmlFor="image">
+                {language === 'uz' ? 'Mahsulot rasmi' : 'Изображение продукта'}
+              </Label>
+              <div className="mt-2">
+                {formData.imagePreview ? (
+                  <div className="relative w-full max-w-md">
+                    <img 
+                      src={formData.imagePreview} 
+                      alt="Preview" 
+                      className="w-full h-48 object-cover rounded-lg border border-gray-300 dark:border-gray-600"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-2 right-2 h-8 w-8 rounded-full"
+                      onClick={handleRemoveImage}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center w-full">
+                    <label
+                      htmlFor="image-upload"
+                      className="flex flex-col items-center justify-center w-full max-w-md h-48 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <Upload className="h-8 w-8 text-gray-400 mb-2" />
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {language === 'uz' 
+                            ? 'Rasm yuklash uchun bosing'
+                            : 'Нажмите для загрузки изображения'}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          PNG, JPG, JPEG (max. 5MB)
+                        </p>
+                      </div>
+                      <input
+                        id="image-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageChange}
+                        disabled={isAddingProduct}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Color */}
             <div>
               <Label htmlFor="color">
@@ -508,10 +620,17 @@ export const ProductCreationPage: React.FC = () => {
                 {language === 'uz' ? 'Ko\'rinish' : 'Предварительный просмотр'}
               </Label>
               <div className="flex items-center gap-4">
-                <div 
-                  className="h-16 w-16 rounded-lg border-2 border-gray-300 dark:border-gray-600 shadow-sm"
-                  style={{ backgroundColor: formData.color }}
-                />
+                <div className="h-16 w-16 rounded-lg border-2 border-gray-300 dark:border-gray-600 shadow-sm overflow-hidden">
+                  {formData.imagePreview ? (
+                    <img 
+                      src={formData.imagePreview} 
+                      alt={formData.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div style={{ backgroundColor: formData.color }} className="w-full h-full" />
+                  )}
+                </div>
                 <div className="flex-1">
                   <p className="font-medium text-gray-900 dark:text-gray-100">
                     {formData.name || (language === 'uz' ? 'Mahsulot nomi' : 'Название продукта')}
