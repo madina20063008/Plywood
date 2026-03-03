@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
 import { Input } from '../components/ui/input';
@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Search, AlertTriangle, PlusCircle, Loader2, Edit, Trash2, RefreshCw, Upload, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, AlertTriangle, PlusCircle, Loader2, Edit, RefreshCw, Upload, X, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
@@ -32,6 +32,7 @@ export const InventoryPage: React.FC = () => {
   } = useApp();
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -39,9 +40,15 @@ export const InventoryPage: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  // Pagination state - 28 products per page
+  // Pagination state - 30 products per page
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [limit] = useState<number>(28);
+  const [limit] = useState<number>(30);
+
+  // Add a ref to track initial mount
+  const isInitialMount = useRef(true);
+  
+  // Add a ref to track if data is currently being fetched
+  const isFetchingRef = useRef(false);
 
   // Edit form state - matching API schema
   const [editFormData, setEditFormData] = useState({
@@ -65,37 +72,79 @@ export const InventoryPage: React.FC = () => {
   // Calculate total pages
   const totalPages = Math.ceil(totalProducts / limit);
 
-  // Fetch categories and products when component mounts
-  useEffect(() => {
-    if (user) {
-      fetchCategories();
-      fetchProducts({ page: currentPage, limit });
-    }
-  }, [user, currentPage]);
+  // Memoized low stock products - this prevents unnecessary recalculations
+  const lowStockProducts = useMemo(() => 
+    products.filter(p => p.stockQuantity < 20), 
+    [products]
+  );
 
-  // Handle search with debounce
+  // Debounce search query
   useEffect(() => {
-    if (!user) return;
-
     const timeoutId = setTimeout(() => {
-      fetchProducts({ 
-        page: 1, // Reset to first page on search
-        limit,
-        search: searchQuery || undefined,
-        category: selectedCategoryId !== 'all' ? parseInt(selectedCategoryId) : undefined
-      });
-      setCurrentPage(1); // Reset current page
+      setDebouncedSearchQuery(searchQuery);
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, selectedCategoryId]);
+  }, [searchQuery]);
+
+  // Memoized fetch products function to prevent unnecessary re-renders
+  const loadProducts = useCallback(async (page: number, category?: string, search?: string) => {
+    // Prevent multiple simultaneous fetch requests
+    if (isFetchingRef.current) return;
+    
+    isFetchingRef.current = true;
+    try {
+      await fetchProducts({ 
+        page, 
+        limit,
+        search: search || undefined,
+        category: category && category !== 'all' ? parseInt(category) : undefined
+      });
+    } catch (error) {
+      console.error('Failed to fetch products:', error);
+      toast.error(language === 'uz' 
+        ? 'Mahsulotlarni yuklashda xatolik yuz berdi' 
+        : 'Ошибка при загрузке продуктов');
+    } finally {
+      isFetchingRef.current = false;
+    }
+  }, [fetchProducts, limit, language]);
+
+  // Fetch categories on mount
+  useEffect(() => {
+    if (user && isInitialMount.current) {
+      isInitialMount.current = false;
+      fetchCategories();
+    }
+  }, [user, fetchCategories]);
+
+  // Load products when dependencies change
+  useEffect(() => {
+    if (!user) return;
+
+    // Reset to page 1 when search or category changes
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    } else {
+      loadProducts(1, selectedCategoryId, debouncedSearchQuery);
+    }
+  }, [user, debouncedSearchQuery, selectedCategoryId]);
+
+  // Load products when page changes
+  useEffect(() => {
+    if (!user) return;
+    
+    loadProducts(currentPage, selectedCategoryId, debouncedSearchQuery);
+  }, [user, currentPage, loadProducts]);
 
   const handleRefresh = async () => {
+    if (isRefreshing) return;
+    
     setIsRefreshing(true);
     try {
       await Promise.all([
         fetchCategories(),
-        fetchProducts({ page: currentPage, limit })
+        loadProducts(currentPage, selectedCategoryId, debouncedSearchQuery)
       ]);
       toast.success(language === 'uz' 
         ? 'Ma\'lumotlar yangilandi' 
@@ -111,13 +160,8 @@ export const InventoryPage: React.FC = () => {
 
   // Handle page change
   const handlePageChange = (newPage: number) => {
+    if (newPage === currentPage || isFetchingRef.current) return;
     setCurrentPage(newPage);
-    fetchProducts({ 
-      page: newPage, 
-      limit,
-      search: searchQuery || undefined,
-      category: selectedCategoryId !== 'all' ? parseInt(selectedCategoryId) : undefined
-    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -134,15 +178,15 @@ export const InventoryPage: React.FC = () => {
   };
 
   // Get category name by ID
-  const getCategoryNameById = (categoryId: number | string): string => {
+  const getCategoryNameById = useCallback((categoryId: number | string): string => {
     if (!categoryId) return 'OTHER';
     const id = typeof categoryId === 'string' ? parseInt(categoryId) : categoryId;
     const category = categories.find(c => c.id === id);
     return category?.name || 'OTHER';
-  };
+  }, [categories]);
 
   // Get category ID by name
-  const getCategoryIdByName = (categoryName: string): number | undefined => {
+  const getCategoryIdByName = useCallback((categoryName: string): number | undefined => {
     if (!categoryName) return undefined;
     
     const category = categories.find(c => 
@@ -150,10 +194,10 @@ export const InventoryPage: React.FC = () => {
     );
     
     return category?.id;
-  };
+  }, [categories]);
 
   // Map API product to form data
-  const mapProductToFormData = (product: any) => {
+  const mapProductToFormData = useCallback((product: any) => {
     let categoryId = 0;
     
     if (product.category) {
@@ -196,7 +240,7 @@ export const InventoryPage: React.FC = () => {
       currentImage: product.image || null,
       imagePreview: product.image || null,
     };
-  };
+  }, [categories, getCategoryIdByName]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -234,8 +278,6 @@ export const InventoryPage: React.FC = () => {
       imagePreview: null
     }));
   };
-
-  const lowStockProducts = products.filter(p => p.stockQuantity < 20);
 
   const navigate = useNavigate();
 
@@ -288,7 +330,8 @@ export const InventoryPage: React.FC = () => {
 
       await updateProduct(selectedProduct.id.toString(), formData as any);
       
-      await fetchProducts({ page: currentPage, limit });
+      // Refresh products after update
+      await loadProducts(currentPage, selectedCategoryId, debouncedSearchQuery);
       
       setIsEditDialogOpen(false);
       setSelectedProduct(null);
@@ -311,7 +354,8 @@ export const InventoryPage: React.FC = () => {
     try {
       await deleteProduct(selectedProduct.id.toString());
       
-      await fetchProducts({ page: currentPage, limit });
+      // Refresh products after delete
+      await loadProducts(currentPage, selectedCategoryId, debouncedSearchQuery);
       
       setIsDeleteDialogOpen(false);
       setSelectedProduct(null);
@@ -364,7 +408,7 @@ export const InventoryPage: React.FC = () => {
           <Button
             variant="outline"
             onClick={handleRefresh}
-            disabled={isRefreshing}
+            disabled={isRefreshing || isFetchingProducts}
             className="flex items-center gap-2"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -382,16 +426,22 @@ export const InventoryPage: React.FC = () => {
 
       {lowStockProducts.length > 0 && (
         <Card className="border-orange-200 bg-orange-50 dark:bg-orange-900/20 dark:border-orange-800">
-          <CardHeader>
-            <CardTitle className="flex items-center text-orange-900 dark:text-orange-200">
-              <AlertTriangle className="mr-2 h-5 w-5" />
-              {t('lowStockAlert')}
+          <CardHeader className="py-3">
+            <CardTitle className="flex items-center text-orange-900 dark:text-orange-200 text-sm">
+              <AlertTriangle className="mr-2 h-4 w-4" />
+              {language === 'uz' 
+                ? 'Kam qolgan mahsulotlar haqida ogohlantirish' 
+                : 'Предупреждение о малоимущих продуктах'}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="py-2">
             <div className="flex flex-wrap gap-2">
               {lowStockProducts.map(product => (
-                <Badge key={product.id} variant="outline" className="border-orange-400 text-orange-900 dark:text-orange-200">
+                <Badge 
+                  key={product.id} 
+                  variant="outline" 
+                  className="border-orange-400 text-orange-900 dark:text-orange-200 bg-orange-100 dark:bg-orange-900/40"
+                >
                   {product.name} ({product.stockQuantity})
                 </Badge>
               ))}
@@ -539,6 +589,15 @@ export const InventoryPage: React.FC = () => {
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteClick(product)}
+                                className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-100"
+                                title={language === 'uz' ? 'O\'chirish' : 'Удалить'}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -551,7 +610,12 @@ export const InventoryPage: React.FC = () => {
               {/* Pagination Controls */}
               {totalPages > 1 && (
                 <div className="flex flex-col items-center gap-4 mt-8 pt-4 border-t">
-                 
+                  {/* Page info */}
+                  <div className="text-sm text-gray-500">
+                    {language === 'uz' 
+                      ? `${startItem} - ${endItem} / ${totalProducts} ta mahsulot`
+                      : `${startItem} - ${endItem} из ${totalProducts} продуктов`}
+                  </div>
                   
                   {/* Pagination buttons */}
                   <div className="flex items-center gap-2">
@@ -621,10 +685,9 @@ export const InventoryPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Edit Product Dialog -保持不变 */}
+      {/* Edit Product Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-          {/* Dialog content remains the same */}
           <DialogHeader>
             <DialogTitle>
               {language === 'uz' ? 'Mahsulotni tahrirlash' : 'Редактировать продукт'}
@@ -639,7 +702,7 @@ export const InventoryPage: React.FC = () => {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="name">Name *</Label>
+                <Label htmlFor="name">{language === 'uz' ? 'Nomi *' : 'Название *'}</Label>
                 <Input
                   id="name"
                   value={editFormData.name}
@@ -649,7 +712,7 @@ export const InventoryPage: React.FC = () => {
               </div>
               
               <div className="grid gap-2">
-                <Label htmlFor="color">Color</Label>
+                <Label htmlFor="color">{language === 'uz' ? 'Rangi' : 'Цвет'}</Label>
                 <div className="flex gap-2">
                   <Input
                     id="color"
@@ -720,7 +783,7 @@ export const InventoryPage: React.FC = () => {
             
             <div className="grid grid-cols-3 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="width">Width (mm) *</Label>
+                <Label htmlFor="width">{language === 'uz' ? 'Eni (mm) *' : 'Ширина (мм) *'}</Label>
                 <Input
                   id="width"
                   type="number"
@@ -731,7 +794,7 @@ export const InventoryPage: React.FC = () => {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="height">Height (mm) *</Label>
+                <Label htmlFor="height">{language === 'uz' ? 'Bo\'yi (mm) *' : 'Высота (мм) *'}</Label>
                 <Input
                   id="height"
                   type="number"
@@ -742,7 +805,7 @@ export const InventoryPage: React.FC = () => {
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="thickness">Thickness (mm) *</Label>
+                <Label htmlFor="thickness">{language === 'uz' ? 'Qalinligi (mm) *' : 'Толщина (мм) *'}</Label>
                 <Input
                   id="thickness"
                   type="number"
@@ -756,7 +819,7 @@ export const InventoryPage: React.FC = () => {
             
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="quality">Quality *</Label>
+                <Label htmlFor="quality">{language === 'uz' ? 'Sifati *' : 'Качество *'}</Label>
                 <Select 
                   value={editFormData.quality} 
                   onValueChange={(value: 'standard' | 'economic' | 'premium') => 
@@ -775,7 +838,7 @@ export const InventoryPage: React.FC = () => {
               </div>
               
               <div className="grid gap-2">
-                <Label htmlFor="category">Category *</Label>
+                <Label htmlFor="category">{language === 'uz' ? 'Kategoriya *' : 'Категория *'}</Label>
                 <Select 
                   value={editFormData.category.toString()} 
                   onValueChange={(value) => setEditFormData({ ...editFormData, category: parseInt(value) })}
@@ -801,7 +864,7 @@ export const InventoryPage: React.FC = () => {
             </div>
             
             <div className="grid gap-2">
-              <Label htmlFor="arrival_date">Arrival Date</Label>
+              <Label htmlFor="arrival_date">{language === 'uz' ? 'Kelish sanasi' : 'Дата прибытия'}</Label>
               <Input
                 id="arrival_date"
                 type="date"
@@ -811,12 +874,12 @@ export const InventoryPage: React.FC = () => {
             </div>
             
             <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{language === 'uz' ? 'Tavsif' : 'Описание'}</Label>
               <Input
                 id="description"
                 value={editFormData.description}
                 onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-                placeholder="Product description..."
+                placeholder={language === 'uz' ? 'Mahsulot tavsifi...' : 'Описание продукта...'}
               />
             </div>
             
@@ -826,22 +889,22 @@ export const InventoryPage: React.FC = () => {
                 checked={editFormData.is_active}
                 onCheckedChange={(checked) => setEditFormData({ ...editFormData, is_active: checked })}
               />
-              <Label htmlFor="is_active">Active</Label>
+              <Label htmlFor="is_active">{language === 'uz' ? 'Faol' : 'Активный'}</Label>
             </div>
           </div>
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancel
+              {language === 'uz' ? 'Bekor qilish' : 'Отмена'}
             </Button>
             <Button onClick={handleUpdateProduct} disabled={isUpdatingProduct}>
               {isUpdatingProduct ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
+                  {language === 'uz' ? 'Saqlanmoqda...' : 'Сохранение...'}
                 </>
               ) : (
-                'Save'
+                language === 'uz' ? 'Saqlash' : 'Сохранить'
               )}
             </Button>
           </DialogFooter>
@@ -874,10 +937,10 @@ export const InventoryPage: React.FC = () => {
                   <span className="font-medium">ID:</span> {selectedProduct.id}
                 </p>
                 <p className="text-xs text-gray-500">
-                  <span className="font-medium">Category:</span> {getCategoryNameById(selectedProduct.category)}
+                  <span className="font-medium">{language === 'uz' ? 'Kategoriya:' : 'Категория:'}</span> {getCategoryNameById(selectedProduct.category)}
                 </p>
                 <p className="text-xs text-gray-500">
-                  <span className="font-medium">Stock:</span> {selectedProduct.stockQuantity}
+                  <span className="font-medium">{language === 'uz' ? 'Soni:' : 'Количество:'}</span> {selectedProduct.stockQuantity}
                 </p>
                 {selectedProduct.image && (
                   <img 

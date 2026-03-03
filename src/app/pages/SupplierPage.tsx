@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useApp } from "../../lib/context";
 import { getTranslation } from "../../lib/translations";
 import { Supplier, SupplierTransaction } from "../../lib/types";
@@ -32,6 +32,7 @@ import {
   X,
   MoreVertical,
   Building2,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -72,6 +73,7 @@ export const SupplierPage: React.FC = () => {
     null,
   );
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(
@@ -81,6 +83,13 @@ export const SupplierPage: React.FC = () => {
     SupplierTransaction[]
   >([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Refs to prevent double fetching
+  const isInitialMount = useRef(true);
+  const isFetchingStats = useRef(false);
+  const searchTimeoutRef = useRef<NodeJS.Timeout>();
+  const refreshTimeoutRef = useRef<NodeJS.Timeout>();
 
   // Payment form state
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -95,25 +104,44 @@ export const SupplierPage: React.FC = () => {
 
   const t = (key: string) => getTranslation(language, key as any);
 
-  // Fetch suppliers and stats on component mount
+  // Fetch initial data only once on mount
   useEffect(() => {
-    if (user) {
-      fetchSuppliers();
-      fetchSupplierStats();
+    if (user && isInitialMount.current) {
+      isInitialMount.current = false;
+      
+      // Fetch both in parallel
+      Promise.all([
+        fetchSuppliers(),
+        fetchSupplierStats()
+      ]).catch(error => {
+        console.error('Failed to fetch initial data:', error);
+      });
     }
-  }, [user]);
+  }, [user, fetchSuppliers, fetchSupplierStats]);
 
-  // Search with debounce
+  // Debounce search term
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (user) {
-        fetchSuppliers(searchTerm);
-        fetchSupplierStats(); // Refresh stats when searching
-      }
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
     }, 500);
 
-    return () => clearTimeout(timer);
-  }, [searchTerm, user]);
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchTerm]);
+
+  // Fetch suppliers when debounced search changes
+  useEffect(() => {
+    if (user && !isInitialMount.current) {
+      fetchSuppliers(debouncedSearchTerm);
+    }
+  }, [debouncedSearchTerm, user, fetchSuppliers]);
 
   // Fetch transactions when supplier is selected
   useEffect(() => {
@@ -121,6 +149,18 @@ export const SupplierPage: React.FC = () => {
       loadSupplierTransactions(selectedSupplier.id);
     }
   }, [selectedSupplier, user]);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const loadSupplierTransactions = async (supplierId: string) => {
     setIsLoadingTransactions(true);
@@ -134,6 +174,62 @@ export const SupplierPage: React.FC = () => {
       setIsLoadingTransactions(false);
     }
   };
+
+  // Refresh stats only when needed (after CRUD operations)
+  const refreshStats = useCallback(async () => {
+    if (isFetchingStats.current) return;
+    
+    isFetchingStats.current = true;
+    try {
+      await fetchSupplierStats();
+    } catch (error) {
+      console.error('Failed to refresh stats:', error);
+    } finally {
+      isFetchingStats.current = false;
+    }
+  }, [fetchSupplierStats]);
+
+  // Optimized refresh function - fetches all data in parallel
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    
+    const loadingToast = toast.loading(
+      language === "uz" 
+        ? "Ma'lumotlar yangilanmoqda..." 
+        : "Обновление данных..."
+    );
+    
+    try {
+      // Fetch ALL data in PARALLEL
+      await Promise.all([
+        fetchSuppliers(debouncedSearchTerm),
+        fetchSupplierStats(),
+        selectedSupplier ? loadSupplierTransactions(selectedSupplier.id) : Promise.resolve()
+      ]);
+      
+      toast.dismiss(loadingToast);
+      toast.success(
+        language === "uz" 
+          ? "Ma'lumotlar muvaffaqiyatli yangilandi" 
+          : "Данные успешно обновлены"
+      );
+    } catch (error) {
+      toast.dismiss(loadingToast);
+      toast.error(
+        language === "uz" 
+          ? "Yangilashda xatolik yuz berdi" 
+          : "Ошибка при обновлении"
+      );
+      console.error('Refresh error:', error);
+    } finally {
+      // Small delay to prevent UI flicker
+      refreshTimeoutRef.current = setTimeout(() => {
+        setIsRefreshing(false);
+      }, 300);
+    }
+  }, [fetchSuppliers, fetchSupplierStats, selectedSupplier, debouncedSearchTerm, language]);
 
   const resetForm = () => {
     setFormData({
@@ -187,7 +283,7 @@ export const SupplierPage: React.FC = () => {
 
     try {
       await addSupplier(formData);
-      await fetchSupplierStats(); // Refresh stats after adding
+      await refreshStats(); // Refresh stats after adding
       toast.success(
         language === "uz" ? "Ta'minotchi qo'shildi" : "Поставщик добавлен",
       );
@@ -218,7 +314,7 @@ export const SupplierPage: React.FC = () => {
         phone: formData.phone,
         company: formData.company,
       });
-      await fetchSupplierStats(); // Refresh stats after updating
+      await refreshStats(); // Refresh stats after updating
       toast.success(
         language === "uz" ? "Ta'minotchi yangilandi" : "Поставщик обновлен",
       );
@@ -235,7 +331,7 @@ export const SupplierPage: React.FC = () => {
 
     try {
       await deleteSupplier(supplierToDelete.id);
-      await fetchSupplierStats(); // Refresh stats after deleting
+      await refreshStats(); // Refresh stats after deleting
       toast.success(
         language === "uz" ? "Ta'minotchi o'chirildi" : "Поставщик удален",
       );
@@ -266,10 +362,12 @@ export const SupplierPage: React.FC = () => {
     try {
       await addSupplierPayment(selectedSupplier.id, amount, paymentDescription);
 
-      // Refresh supplier list, transactions, and stats
-      await fetchSuppliers();
-      await fetchSupplierStats();
-      await loadSupplierTransactions(selectedSupplier.id);
+      // Refresh supplier list, transactions, and stats in parallel
+      await Promise.all([
+        fetchSuppliers(debouncedSearchTerm),
+        refreshStats(),
+        loadSupplierTransactions(selectedSupplier.id)
+      ]);
 
       toast.success(
         language === "uz" ? "To'lov qabul qilindi" : "Платеж принят",
@@ -316,7 +414,7 @@ export const SupplierPage: React.FC = () => {
     return language === "uz" ? "Qarz yo'q" : "Нет долга";
   };
 
-  // Mobile Supplier Card Component - Fixed layout
+  // Mobile Supplier Card Component
   const MobileSupplierCard = ({ supplier }: { supplier: Supplier }) => {
     const balance = getSupplierBalance(supplier.id);
     const isSelected = selectedSupplier?.id === supplier.id;
@@ -336,7 +434,6 @@ export const SupplierPage: React.FC = () => {
         <CardContent className="p-4">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              {/* Header with name and phone */}
               <div className="flex items-center gap-2 mb-2">
                 <div
                   className={`rounded-full p-2 ${
@@ -359,7 +456,6 @@ export const SupplierPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Company name */}
               {supplier.company && (
                 <div className="flex items-center gap-1 text-xs mb-3 ml-1">
                   <Building2
@@ -379,7 +475,6 @@ export const SupplierPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Debt badge - First row */}
               <div className="flex items-center gap-2 mb-3">
                 <Badge
                   variant={getDebtBadgeVariant(balance.balance)}
@@ -393,7 +488,6 @@ export const SupplierPage: React.FC = () => {
                 </span>
               </div>
 
-              {/* Financial stats in a single row */}
               <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2">
                 <div className="flex-1 text-center">
                   <p className="text-[10px] text-gray-500 uppercase">
@@ -432,12 +526,9 @@ export const SupplierPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Menu button */}
             <Sheet
               open={isMobileMenuOpen && selectedSupplier?.id === supplier.id}
-              onOpenChange={(open) => {
-                setIsMobileMenuOpen(open);
-              }}
+              onOpenChange={setIsMobileMenuOpen}
             >
               <SheetTrigger asChild>
                 <Button
@@ -512,7 +603,7 @@ export const SupplierPage: React.FC = () => {
 
   return (
     <div className="min-h-screen p-4 sm:p-6 space-y-6">
-      {/* Header */}
+      {/* Header with Refresh Button */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
@@ -525,133 +616,166 @@ export const SupplierPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Add Supplier Button */}
-        <Dialog
-          open={isAddDialogOpen}
-          onOpenChange={(open) => {
-            setIsAddDialogOpen(open);
-            if (!open) resetForm();
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button
-              size="default"
-              className="w-full sm:w-auto"
-              disabled={isAddingSupplier}
-            >
-              <Plus className="mr-2 h-5 w-5" />
-              <span className="hidden sm:inline">
-                {language === "uz"
-                  ? "Ta'minotchi qo'shish"
-                  : "Добавить поставщика"}
-              </span>
-              <span className="sm:hidden">
-                {language === "uz" ? "Qo'shish" : "Добавить"}
-              </span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="w-[95vw] max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-xl">
-                {language === "uz"
-                  ? "Ta'minotchi qo'shish"
-                  : "Добавить поставщика"}
-              </DialogTitle>
-              <DialogDescription>
-                {language === "uz"
-                  ? "Yangi ta'minotchi ma'lumotlarini kiriting"
-                  : "Введите информацию о новом поставщике"}
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleAddSupplier} className="space-y-4">
-              <div>
-                <Label htmlFor="name">
-                  {language === "uz" ? "Ism" : "Имя"}{" "}
-                  <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  placeholder={
-                    language === "uz"
-                      ? "Masalan: Anvar Aliyev"
-                      : "Например: Анвар Алиев"
-                  }
-                  required
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label htmlFor="phone">
-                  {language === "uz" ? "Telefon raqam" : "Номер телефона"}{" "}
-                  <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
-                  placeholder="+998901234567"
-                  required
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <Label htmlFor="company">
-                  {language === "uz" ? "Kompaniya nomi" : "Название компании"}
-                </Label>
-                <Input
-                  id="company"
-                  value={formData.company}
-                  onChange={(e) =>
-                    setFormData({ ...formData, company: e.target.value })
-                  }
-                  placeholder={
-                    language === "uz"
-                      ? 'Masalan: MChJ "Alfa"'
-                      : 'Например: ООО "Альфа"'
-                  }
-                  className="w-full"
-                />
-              </div>
-              <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setIsAddDialogOpen(false);
-                    resetForm();
-                  }}
-                  disabled={isAddingSupplier}
-                  className="w-full sm:w-auto"
-                >
-                  {t("cancel")}
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isAddingSupplier}
-                  className="w-full sm:w-auto"
-                >
-                  {isAddingSupplier && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  {t("save")}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          {/* Refresh Button */}
+          <Button
+            variant="outline"
+            size="default"
+            onClick={handleRefresh}
+            disabled={isRefreshing || isFetchingSuppliers}
+            className="w-full sm:w-auto min-w-[100px]"
+          >
+            {isRefreshing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <span className="hidden sm:inline">
+                  {language === "uz" ? "Yangilanmoqda..." : "Обновление..."}
+                </span>
+                <span className="sm:hidden">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                </span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {language === "uz" ? "Yangilash" : "Обновить"}
+                </span>
+                <span className="sm:hidden">
+                  {language === "uz" ? "Yangila" : "Обновить"}
+                </span>
+              </>
+            )}
+          </Button>
+
+          {/* Add Supplier Button */}
+          <Dialog
+            open={isAddDialogOpen}
+            onOpenChange={(open) => {
+              setIsAddDialogOpen(open);
+              if (!open) resetForm();
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button
+                size="default"
+                className="w-full sm:w-auto"
+                disabled={isAddingSupplier}
+              >
+                <Plus className="mr-2 h-5 w-5" />
+                <span className="hidden sm:inline">
+                  {language === "uz"
+                    ? "Ta'minotchi qo'shish"
+                    : "Добавить поставщика"}
+                </span>
+                <span className="sm:hidden">
+                  {language === "uz" ? "Qo'shish" : "Добавить"}
+                </span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="w-[95vw] max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-xl">
+                  {language === "uz"
+                    ? "Ta'minotchi qo'shish"
+                    : "Добавить поставщика"}
+                </DialogTitle>
+                <DialogDescription>
+                  {language === "uz"
+                    ? "Yangi ta'minotchi ma'lumotlarini kiriting"
+                    : "Введите информацию о новом поставщике"}
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleAddSupplier} className="space-y-4">
+                <div>
+                  <Label htmlFor="name">
+                    {language === "uz" ? "Ism" : "Имя"}{" "}
+                    <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, name: e.target.value })
+                    }
+                    placeholder={
+                      language === "uz"
+                        ? "Masalan: Anvar Aliyev"
+                        : "Например: Анвар Алиев"
+                    }
+                    required
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="phone">
+                    {language === "uz" ? "Telefon raqam" : "Номер телефона"}{" "}
+                    <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) =>
+                      setFormData({ ...formData, phone: e.target.value })
+                    }
+                    placeholder="+998901234567"
+                    required
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="company">
+                    {language === "uz" ? "Kompaniya nomi" : "Название компании"}
+                  </Label>
+                  <Input
+                    id="company"
+                    value={formData.company}
+                    onChange={(e) =>
+                      setFormData({ ...formData, company: e.target.value })
+                    }
+                    placeholder={
+                      language === "uz"
+                        ? 'Masalan: MChJ "Alfa"'
+                        : 'Например: ООО "Альфа"'
+                    }
+                    className="w-full"
+                  />
+                </div>
+                <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsAddDialogOpen(false);
+                      resetForm();
+                    }}
+                    disabled={isAddingSupplier}
+                    className="w-full sm:w-auto"
+                  >
+                    {t("cancel")}
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isAddingSupplier}
+                    className="w-full sm:w-auto"
+                  >
+                    {isAddingSupplier && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    {t("save")}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
-      {/* Statistics Cards - UPDATED to use supplierStats from API */}
+      {/* Statistics Cards with Loading States */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card>
           <CardContent className="p-4 sm:p-6">
-            {isFetchingSupplierStats ? (
+            {isFetchingSupplierStats || isRefreshing ? (
               <div className="flex items-center justify-center h-20">
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
               </div>
@@ -677,7 +801,7 @@ export const SupplierPage: React.FC = () => {
 
         <Card>
           <CardContent className="p-4 sm:p-6">
-            {isFetchingSupplierStats ? (
+            {isFetchingSupplierStats || isRefreshing ? (
               <div className="flex items-center justify-center h-20">
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
               </div>
@@ -715,7 +839,7 @@ export const SupplierPage: React.FC = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-10"
-              disabled={isFetchingSuppliers}
+              disabled={isFetchingSuppliers || isRefreshing}
             />
             {searchTerm && (
               <button
@@ -767,7 +891,7 @@ export const SupplierPage: React.FC = () => {
               </div>
             ) : (
               <>
-                {/* Mobile View - Card Layout */}
+                {/* Mobile View */}
                 <div className="block lg:hidden p-4">
                   <ScrollArea className="h-[calc(100vh-400px)]">
                     {suppliers.map((supplier) => (
@@ -779,7 +903,7 @@ export const SupplierPage: React.FC = () => {
                   </ScrollArea>
                 </div>
 
-                {/* Desktop View - List Layout */}
+                {/* Desktop View */}
                 <div className="hidden lg:block p-4">
                   <ScrollArea className="h-[300px]">
                     <div className="space-y-2">
@@ -876,7 +1000,6 @@ export const SupplierPage: React.FC = () => {
           <CardContent className="p-4 sm:p-6">
             {selectedSupplier ? (
               <div className="space-y-4 sm:space-y-6">
-                {/* Header with actions - Stack on mobile */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <h2 className="text-lg sm:text-xl font-semibold">
                     {selectedSupplier.name}
@@ -886,7 +1009,7 @@ export const SupplierPage: React.FC = () => {
                       variant="outline"
                       size="sm"
                       onClick={() => handlePaymentClick(selectedSupplier)}
-                      disabled={isAddingSupplierPayment}
+                      disabled={isAddingSupplierPayment || isRefreshing}
                       className="bg-black text-white hover:bg-white hover:text-black hover:border-black transition-all duration-200 [&_svg]:text-white hover:[&_svg]:text-black flex-1 sm:flex-none"
                     >
                       <CreditCard className="mr-2 h-4 w-4" />
@@ -896,7 +1019,7 @@ export const SupplierPage: React.FC = () => {
                       variant="outline"
                       size="sm"
                       onClick={() => handleEditClick(selectedSupplier)}
-                      disabled={isUpdatingSupplier}
+                      disabled={isUpdatingSupplier || isRefreshing}
                       className="flex-1 sm:flex-none"
                     >
                       <Edit className="mr-2 h-4 w-4" />
@@ -906,7 +1029,7 @@ export const SupplierPage: React.FC = () => {
                       variant="destructive"
                       size="sm"
                       onClick={() => handleDeleteClick(selectedSupplier)}
-                      disabled={isDeletingSupplier}
+                      disabled={isDeletingSupplier || isRefreshing}
                       className="flex-1 sm:flex-none"
                     >
                       {isDeletingSupplier ? (
@@ -919,7 +1042,6 @@ export const SupplierPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Contact Info - Better mobile layout */}
                 <div className="grid gap-3 p-3 sm:p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <div className="flex items-center gap-3">
                     <Phone className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" />
@@ -948,7 +1070,6 @@ export const SupplierPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Financial Summary */}
                 <div>
                   <h3 className="font-semibold mb-2 sm:mb-3 text-sm sm:text-base">
                     {language === "uz"
@@ -998,7 +1119,6 @@ export const SupplierPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* Transaction History - Scrollable on mobile */}
                 <div>
                   <h3 className="font-semibold mb-2 sm:mb-3 text-sm sm:text-base">
                     {language === "uz"
@@ -1006,7 +1126,7 @@ export const SupplierPage: React.FC = () => {
                       : "История операций"}
                   </h3>
                   <div className="space-y-2 max-h-[200px] sm:max-h-[300px] overflow-y-auto">
-                    {isLoadingTransactions ? (
+                    {isLoadingTransactions || isRefreshing ? (
                       <div className="flex justify-center py-8">
                         <Loader2 className="h-6 w-6 sm:h-8 sm:w-8 animate-spin text-blue-600" />
                       </div>

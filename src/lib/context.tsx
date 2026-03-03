@@ -1,6 +1,6 @@
 import React, {createContext,useContext,useState,useEffect,ReactNode,useCallback,useRef,} from "react";
-import {authApi,customerApi,userApi,productApi,categoryApi,acceptanceApi,basketApi,cuttingApi,bandingApi,thicknessApi,orderApi,notificationsApi,dashboardApi,orderStatsApi,qualityApi,supplierApi} from "../lib/api";
-import {User,UserRole,Product,Customer,CartItem,Sale,ProductArrival,CustomerTransaction,ApiCustomer,CreateCustomerData,ApiUser,CreateUserData,ApiProduct,CreateProductData,ProductFilters,ApiCategory,ApiAcceptanceHistory,CuttingService,EdgeBandingService,CreateCuttingData,CreateBandingData,ApiThickness,CreateThicknessData,ApiOrder,CreateOrderData,LowStockNotification,DashboardStats,OrderStats,DebtStats,ApiQuality,ApiSupplier,CreateSupplierData,SupplierPaymentData,SupplierTransaction,Supplier,PaymentHistoryResponse,} from "../lib/types";
+import {authApi,customerApi,userApi,productApi,categoryApi,acceptanceApi,basketApi,cuttingApi,bandingApi,thicknessApi,orderApi,notificationsApi,dashboardApi,orderStatsApi,qualityApi,supplierApi, rangeStatsApi} from "../lib/api";
+import {User,UserRole,Product,Customer,CartItem,Sale,ProductArrival,CustomerTransaction,ApiCustomer,CreateCustomerData,ApiUser,CreateUserData,ApiProduct,CreateProductData,ProductFilters,ApiCategory,ApiAcceptanceHistory,CuttingService,EdgeBandingService,CreateCuttingData,CreateBandingData,ApiThickness,CreateThicknessData,ApiOrder,CreateOrderData,LowStockNotification,DashboardStats,OrderStats,DebtStats,ApiQuality,ApiSupplier,CreateSupplierData,SupplierPaymentData,SupplierTransaction,Supplier,PaymentHistoryResponse, RangeStats,} from "../lib/types";
 import { toast } from "sonner";
 interface AppContextType {
   user: User | null;
@@ -106,6 +106,9 @@ interface AppContextType {
     totalPayments: number;
     balance: number;
   };
+  rangeStats: RangeStats | null;
+  isFetchingRangeStats: boolean;
+  fetchRangeStats: (from?: string, to?: string) => Promise<void>;
   fetchCustomers: (search?: string) => Promise<void>;
   addCustomer: (
     customerData: Omit<Customer, "id" | "createdAt" | "updatedAt">,
@@ -211,6 +214,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   total_suppliers: 0,
   total_debt: 0,
 });
+const [rangeStats, setRangeStats] = useState<RangeStats | null>(null);
+const [isFetchingRangeStats, setIsFetchingRangeStats] = useState(false);
 const [isFetchingSupplierStats, setIsFetchingSupplierStats] = useState(false);
   const [isFetchingCustomerStats, setIsFetchingCustomerStats] = useState(false);
   const [debtStats, setDebtStats] = useState<DebtStats | null>(null);
@@ -272,6 +277,7 @@ const [isFetchingSupplierStats, setIsFetchingSupplierStats] = useState(false);
   const hasFetchedQualities = useRef(false);
   const hasFetchedSupplierStats = useRef(false);
   const hasFetchedSuppliers = useRef(false);
+  const hasFetchedRangeStats = useRef(false);
   const checkTokenValidity = useCallback(async () => {
     const token = localStorage.getItem("accessToken");
     if (!token) return;
@@ -507,6 +513,25 @@ const mapSupplierToApiData = (supplierData: Omit<Supplier, 'id' | 'createdAt' | 
       updatedAt: new Date().toISOString(),
     };
   };
+  const fetchRangeStats = useCallback(async (from?: string, to?: string) => {
+  if (!user) return;
+  
+  setIsFetchingRangeStats(true);
+  try {
+    const stats = await rangeStatsApi.getStats(from, to);
+    setRangeStats(stats);
+    hasFetchedRangeStats.current = true;
+  } catch (error) {
+    console.error("Failed to fetch range stats:", error);
+    toast.error(
+      language === "uz"
+        ? "Statistikani yuklashda xatolik yuz berdi"
+        : "Ошибка при загрузке статистики"
+    );
+  } finally {
+    setIsFetchingRangeStats(false);
+  }
+}, [user, language]);
   const getCustomerById = useCallback(
     async (id: number): Promise<Customer | null> => {
       if (!user) return null;
@@ -2197,6 +2222,9 @@ const fetchProducts = useCallback(async (filters?: ProductFilters) => {
     isLoading,
     language,
     theme,
+    rangeStats,
+  isFetchingRangeStats,
+  fetchRangeStats,
     products,
     customers,
     cart,

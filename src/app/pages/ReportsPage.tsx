@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { FileText, Download, TrendingUp, Percent, DollarSign } from 'lucide-react';
+import { TrendingUp, Percent, DollarSign, Download } from 'lucide-react';
 import { format } from 'date-fns';
 
 export const ReportsPage: React.FC = () => {

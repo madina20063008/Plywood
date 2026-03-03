@@ -25,7 +25,8 @@ import {
   SupplierTransaction,
   CoverDebtRequest,
   PaymentHistoryResponse,
-  PaginatedResponse
+  PaginatedResponse,
+  RangeStats
 } from "./types";
 
 // api.ts
@@ -715,5 +716,26 @@ getStats: (): Promise<{
   // Get supplier transactions
   getTransactions: (supplierId: number): Promise<SupplierTransaction[]> => {
     return apiRequest<SupplierTransaction[]>(`/supplier/${supplierId}/transactions/`);
+  },
+};
+
+// Add this to your api.ts file inside the existing api object or as a new export
+
+// Range Stats API
+export const rangeStatsApi = {
+  // Get statistics for a date range
+  getStats: (from?: string, to?: string): Promise<RangeStats> => {
+    let endpoint = '/utils/range/stats/';
+    
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    
+    const queryString = params.toString();
+    if (queryString) {
+      endpoint += `?${queryString}`;
+    }
+    
+    return apiRequest<RangeStats>(endpoint);
   },
 };

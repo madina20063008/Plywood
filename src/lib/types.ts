@@ -636,3 +636,12 @@ export interface PaymentHistoryResponse {
 export interface CoverDebtRequest {
   amount: string;
 }
+
+export interface RangeStats {
+  from: string;
+  to: string;
+  total_income: number;
+  product_income: number;
+  banding_income: number;
+  cutting_income: number;
+}
