@@ -316,7 +316,7 @@ export const productApi = {
     params.append('page', filters?.page?.toString() || '1');
     
     // If limit is provided, use it; otherwise default to 28
-    params.append('limit', filters?.limit?.toString() || '30');
+    params.append('limit', filters?.limit?.toString() || '');
     
     // Log the parameters for debugging
     console.log('📦 Product API params:', {

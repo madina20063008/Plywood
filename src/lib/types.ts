@@ -352,7 +352,7 @@ export interface BasketItem {
 // Thickness API Types
 export interface ApiThickness {
   id: number;
-  size: string;
+  text: string;
   price: string;
 }
 
@@ -365,8 +365,7 @@ export interface CreateThicknessData {
 export interface ApiBanding {
   id: number;
   thickness: ApiThickness; 
-  width: string;
-  height: string;
+  length: string;
   linear_meter?: number;
   total_price?: number;
   created_at?: string;

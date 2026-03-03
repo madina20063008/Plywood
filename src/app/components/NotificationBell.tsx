@@ -27,7 +27,7 @@ export const NotificationBell: React.FC = () => {
               variant="destructive" 
               className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs"
             >
-              {notificationCount}
+              <p className='text-[9px]'>{notificationCount}</p>
             </Badge>
           )}
         </Button>
@@ -71,7 +71,7 @@ export const NotificationBell: React.FC = () => {
                       {product.name}
                     </span>
                     <Badge variant="outline" className="ml-2 flex-shrink-0 bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800">
-                      {product.count} {language === 'uz' ? 'dona' : 'шт'}
+                       {product.count} {language === 'uz' ? 'dona' : 'шт'}
                     </Badge>
                   </div>
                 ))}

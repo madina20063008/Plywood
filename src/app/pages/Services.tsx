@@ -80,12 +80,11 @@ export const Services: React.FC = () => {
 
   const [newBanding, setNewBanding] = useState({
     thickness: '',
-    width: '',
-    height: ''
+    length: ''
   });
 
   const [newThickness, setNewThickness] = useState({
-    size: '',
+    text: '', // Changed from 'size' to 'text' to match API
     price: ''
   });
 
@@ -99,13 +98,12 @@ export const Services: React.FC = () => {
   const [editBanding, setEditBanding] = useState<{
     id: number;
     thickness: string;
-    width: string;
-    height: string;
+    length: string;
   } | null>(null);
 
   const [editThickness, setEditThickness] = useState<{
     id: number;
-    size: string;
+    text: string; // Changed from 'size' to 'text' to match API
     price: string;
   } | null>(null);
 
@@ -221,6 +219,18 @@ export const Services: React.FC = () => {
     }
   }, [isEditCuttingDialogOpen]);
 
+  useEffect(() => {
+    if (!isThicknessDialogOpen) {
+      setNewThickness({ text: '', price: '' });
+    }
+  }, [isThicknessDialogOpen]);
+
+  useEffect(() => {
+    if (!isEditThicknessDialogOpen) {
+      setEditThickness(null);
+    }
+  }, [isEditThicknessDialogOpen]);
+
   // Create handlers
   const handleCreateCutting = async () => {
     if (!user) return;
@@ -288,14 +298,13 @@ export const Services: React.FC = () => {
     try {
       await bandingApi.create({
         thickness: parseInt(newBanding.thickness),
-        width: newBanding.width,
-        height: newBanding.height
+        length: newBanding.length
       });
       
       await fetchBandings();
       
       setIsBandingDialogOpen(false);
-      setNewBanding({ thickness: '', width: '', height: '' });
+      setNewBanding({ thickness: '', length: '' });
       fetchIncomeStats();
       toast.success(language === 'uz' ? 'Kromkalash xizmati qo\'shildi' : 'Услуга кромкования добавлена');
     } catch (error) {
@@ -308,12 +317,12 @@ export const Services: React.FC = () => {
     if (!user) return;
     try {
       const data = await thicknessApi.create({
-        size: newThickness.size,
+        text: newThickness.text, // Sending 'text' field to API
         price: newThickness.price
       });
       setThicknesses(prev => [data, ...prev]);
       setIsThicknessDialogOpen(false);
-      setNewThickness({ size: '', price: '' });
+      setNewThickness({ text: '', price: '' });
       toast.success(language === 'uz' ? 'Qalinlik qo\'shildi' : 'Толщина добавлена');
     } catch (error) {
       console.error('Failed to create thickness:', error);
@@ -325,8 +334,7 @@ export const Services: React.FC = () => {
     setEditBanding({
       id: banding.id,
       thickness: banding.thickness?.id?.toString() || '',
-      width: banding.width.toString(),
-      height: banding.height.toString()
+      length: banding.length.toString()
     });
     setIsEditBandingDialogOpen(true);
   };
@@ -336,8 +344,7 @@ export const Services: React.FC = () => {
     try {
       await bandingApi.update(editBanding.id, {
         thickness: parseInt(editBanding.thickness),
-        width: editBanding.width,
-        height: editBanding.height
+        length: editBanding.length
       });
       
       await fetchBandings();
@@ -354,7 +361,7 @@ export const Services: React.FC = () => {
   const handleOpenEditThickness = (thickness: ApiThickness) => {
     setEditThickness({
       id: thickness.id,
-      size: thickness.size,
+      text: thickness.text, // Using 'text' field from API response
       price: thickness.price
     });
     setIsEditThicknessDialogOpen(true);
@@ -364,7 +371,7 @@ export const Services: React.FC = () => {
     if (!user || !editThickness) return;
     try {
       const updatedData = await thicknessApi.update(editThickness.id, {
-        size: editThickness.size,
+        text: editThickness.text, // Sending 'text' field to API
         price: editThickness.price
       });
       
@@ -755,48 +762,10 @@ export const Services: React.FC = () => {
           </Card>
         </TabsContent>
 
-        {/* Banding Tab - with created_at */}
+        {/* Banding Tab */}
         <TabsContent value="banding" className="space-y-4">
           <div className="flex justify-end gap-2">
-            <Dialog open={isThicknessDialogOpen} onOpenChange={setIsThicknessDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="flex items-center gap-2">
-                  <PlusCircle className="h-5 w-5" />
-                  {language === 'uz' ? 'Qalinlik qo\'shish' : 'Добавить толщину'}
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    {language === 'uz' ? 'Yangi qalinlik' : 'Новая толщина'}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>{language === 'uz' ? 'Qalinligi (mm)' : 'Толщина (мм)'}</Label>
-                    <Input
-                      type="text"
-                      value={newThickness.size}
-                      onChange={(e) => setNewThickness({...newThickness, size: e.target.value})}
-                      placeholder="16"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{language === 'uz' ? 'Narxi' : 'Цена'}</Label>
-                    <Input
-                      type="text"
-                      value={newThickness.price}
-                      onChange={(e) => setNewThickness({...newThickness, price: e.target.value})}
-                      placeholder="5000"
-                    />
-                  </div>
-                  <Button onClick={handleCreateThickness} className="w-full">
-                    {language === 'uz' ? 'Qo\'shish' : 'Добавить'}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-
+            {/* Banding Dialog */}
             <Dialog open={isBandingDialogOpen} onOpenChange={setIsBandingDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="flex items-center gap-2">
@@ -823,28 +792,19 @@ export const Services: React.FC = () => {
                       <SelectContent>
                         {thicknesses.map((t) => (
                           <SelectItem key={t.id} value={t.id.toString()}>
-                            {t.size} mm - {parseNumber(t.price).toLocaleString()} UZS
+                            {t.text} - {parseNumber(t.price).toLocaleString()} UZS
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>{language === 'uz' ? 'Eni (mm)' : 'Ширина (мм)'}</Label>
+                    <Label>{language === 'uz' ? 'Uzunlik (mm)' : 'Длина (мм)'}</Label>
                     <Input
                       type="text"
-                      value={newBanding.width}
-                      onChange={(e) => setNewBanding({...newBanding, width: e.target.value})}
+                      value={newBanding.length}
+                      onChange={(e) => setNewBanding({...newBanding, length: e.target.value})}
                       placeholder="3000"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>{language === 'uz' ? 'Balandligi (mm)' : 'Высота (мм)'}</Label>
-                    <Input
-                      type="text"
-                      value={newBanding.height}
-                      onChange={(e) => setNewBanding({...newBanding, height: e.target.value})}
-                      placeholder="1500"
                     />
                   </div>
                   <Button onClick={handleCreateBanding} className="w-full">
@@ -876,28 +836,19 @@ export const Services: React.FC = () => {
                         <SelectContent>
                           {thicknesses.map((t) => (
                             <SelectItem key={t.id} value={t.id.toString()}>
-                              {t.size} mm - {parseNumber(t.price).toLocaleString()} UZS
+                              {t.text} - {parseNumber(t.price).toLocaleString()} UZS
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>{language === 'uz' ? 'Eni (mm)' : 'Ширина (мм)'}</Label>
+                      <Label>{language === 'uz' ? 'Uzunlik (mm)' : 'Длина (мм)'}</Label>
                       <Input
                         type="text"
-                        value={editBanding.width}
-                        onChange={(e) => setEditBanding({...editBanding, width: e.target.value})}
+                        value={editBanding.length}
+                        onChange={(e) => setEditBanding({...editBanding, length: e.target.value})}
                         placeholder="3000"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{language === 'uz' ? 'Balandligi (mm)' : 'Высота (мм)'}</Label>
-                      <Input
-                        type="text"
-                        value={editBanding.height}
-                        onChange={(e) => setEditBanding({...editBanding, height: e.target.value})}
-                        placeholder="1500"
                       />
                     </div>
                     <Button onClick={handleUpdateBanding} className="w-full">
@@ -916,8 +867,7 @@ export const Services: React.FC = () => {
                   <TableRow>
                     <TableHead>ID</TableHead>
                     <TableHead>{language === 'uz' ? 'Qalinlik' : 'Толщина'}</TableHead>
-                    <TableHead>{language === 'uz' ? 'Eni (mm)' : 'Ширина (мм)'}</TableHead>
-                    <TableHead>{language === 'uz' ? 'Balandligi (mm)' : 'Высота (мм)'}</TableHead>
+                    <TableHead>{language === 'uz' ? 'Uzunlik (mm)' : 'Длина (мм)'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Chiziqli metr' : 'Пог. метры'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Jami summa' : 'Общая сумма'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Sana' : 'Дата'}</TableHead>
@@ -934,7 +884,7 @@ export const Services: React.FC = () => {
                         <TableCell>
                           {thickness ? (
                             <div>
-                              <div>{thickness.size} mm</div>
+                              <div>{thickness.text}</div>
                               <div className="text-xs text-gray-500">
                                 {parseNumber(thickness.price).toLocaleString()} UZS
                               </div>
@@ -943,8 +893,7 @@ export const Services: React.FC = () => {
                             <span className="text-gray-400">-</span>
                           )}
                         </TableCell>
-                        <TableCell>{parseNumber(banding.width).toFixed(2)}</TableCell>
-                        <TableCell>{parseNumber(banding.height).toFixed(2)}</TableCell>
+                        <TableCell>{parseNumber(banding.length).toFixed(2)}</TableCell>
                         <TableCell>
                           <Badge variant="outline">
                             {parseNumber(banding.linear_meter).toFixed(2)} m
@@ -959,7 +908,6 @@ export const Services: React.FC = () => {
                           <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
                             <Calendar className="h-3 w-3" />
                             {formatDate(banding.created_at)}
-                            
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
@@ -987,7 +935,7 @@ export const Services: React.FC = () => {
                   })}
                   {bandings.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                         {language === 'uz' 
                           ? 'Kromkalash xizmatlari mavjud emas' 
                           : 'Услуги кромкования отсутствуют'}
@@ -1018,12 +966,12 @@ export const Services: React.FC = () => {
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label>{language === 'uz' ? 'Qalinligi (mm)' : 'Толщина (мм)'}</Label>
+                    <Label>{language === 'uz' ? 'Qalinlik (mm)' : 'Толщина (мм)'}</Label>
                     <Input
                       type="text"
-                      value={newThickness.size}
-                      onChange={(e) => setNewThickness({...newThickness, size: e.target.value})}
-                      placeholder="16"
+                      value={newThickness.text}
+                      onChange={(e) => setNewThickness({...newThickness, text: e.target.value})}
+                      placeholder="16 mm"
                     />
                   </div>
                   <div className="space-y-2">
@@ -1053,12 +1001,12 @@ export const Services: React.FC = () => {
                 {editThickness && (
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
-                      <Label>{language === 'uz' ? 'Qalinligi (mm)' : 'Толщина (мм)'}</Label>
+                      <Label>{language === 'uz' ? 'Qalinlik (mm)' : 'Толщина (мм)'}</Label>
                       <Input
                         type="text"
-                        value={editThickness.size}
-                        onChange={(e) => setEditThickness({...editThickness, size: e.target.value})}
-                        placeholder="16"
+                        value={editThickness.text}
+                        onChange={(e) => setEditThickness({...editThickness, text: e.target.value})}
+                        placeholder="16 mm"
                       />
                     </div>
                     <div className="space-y-2">
@@ -1085,7 +1033,7 @@ export const Services: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>ID</TableHead>
-                    <TableHead>{language === 'uz' ? 'Qalinligi (mm)' : 'Толщина (мм)'}</TableHead>
+                    <TableHead>{language === 'uz' ? 'Qalinlik' : 'Толщина'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Narxi (UZS/m)' : 'Цена (UZS/м)'}</TableHead>
                     <TableHead className="text-right">{language === 'uz' ? 'Amallar' : 'Действия'}</TableHead>
                   </TableRow>
@@ -1094,7 +1042,7 @@ export const Services: React.FC = () => {
                   {thicknesses.map((thickness) => (
                     <TableRow key={thickness.id}>
                       <TableCell className="font-medium">#{thickness.id}</TableCell>
-                      <TableCell>{thickness.size} mm</TableCell>
+                      <TableCell>{thickness.text}</TableCell>
                       <TableCell>{parseNumber(thickness.price).toLocaleString()} UZS</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
