@@ -82,7 +82,7 @@ export const ReportsPage: React.FC = () => {
               <div className="h-8 w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
             ) : (
               <>
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
                   {dashboardStats?.total_sales || 0}
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -108,7 +108,7 @@ export const ReportsPage: React.FC = () => {
               <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
             ) : (
               <>
-                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
                   {dashboardStats?.total_income?.toLocaleString() || 0}
                 </div>
                 <p className="text-xs text-muted-foreground">UZS</p>
@@ -129,7 +129,7 @@ export const ReportsPage: React.FC = () => {
               <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
             ) : (
               <>
-                <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
                   {dashboardStats?.total_discount?.toLocaleString() || 0}
                 </div>
                 <p className="text-xs text-muted-foreground">UZS</p>

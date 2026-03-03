@@ -666,7 +666,7 @@ export const SupplierPage: React.FC = () => {
                       ? "Jami ta'minotchilar"
                       : "Всего поставщиков"}
                   </p>
-                  <p className="text-xl sm:text-2xl font-bold">
+                  <p className="text-xl font-bold">
                     {supplierStats.total_customers}
                   </p>
                 </div>
@@ -690,7 +690,7 @@ export const SupplierPage: React.FC = () => {
                   <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">
                     {language === "uz" ? "Umumiy qarz" : "Общий долг"}
                   </p>
-                  <p className="text-xl sm:text-2xl font-bold text-red-600">
+                  <p className="text-xl font-bold text-red-600">
                     {formatCurrency(supplierStats.total_debt)} so'm
                   </p>
                 </div>

@@ -394,7 +394,7 @@ export const UsersPage: React.FC = () => {
                   <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">
                     {language === 'uz' ? 'Jami foydalanuvchilar' : 'Всего пользователей'}
                   </p>
-                  <p className="text-xl sm:text-2xl font-bold">{userStats.total_users}</p>
+                  <p className="text-xl font-bold">{userStats.total_users}</p>
                 </div>
               </div>
             )}
@@ -416,7 +416,7 @@ export const UsersPage: React.FC = () => {
                   <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">
                     {language === 'uz' ? 'Sotuvchilar' : 'Продавцы'}
                   </p>
-                  <p className="text-xl sm:text-2xl font-bold">{userStats.total_salers}</p>
+                  <p className="text-xl font-bold">{userStats.total_salers}</p>
                 </div>
               </div>
             )}
@@ -438,7 +438,7 @@ export const UsersPage: React.FC = () => {
                   <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">
                     {language === 'uz' ? 'Admin / Menejer' : 'Админ / Менеджер'}
                   </p>
-                  <p className="text-xl sm:text-2xl font-bold">{userStats.total_admins}</p>
+                  <p className="text-xl font-bold">{userStats.total_admins}</p>
                 </div>
               </div>
             )}

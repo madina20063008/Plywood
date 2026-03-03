@@ -466,7 +466,7 @@ export const Services: React.FC = () => {
             <Scissors className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(incomeStats.total_cutting_income)}</div>
+            <div className="text-xl font-bold">{formatNumber(incomeStats.total_cutting_income)}</div>
             <p className="text-xs text-muted-foreground">
               {language === 'uz' ? 'Bugun: ' : 'Сегодня: '}
               {formatNumber(incomeStats.today_cutting_income)}
@@ -482,7 +482,7 @@ export const Services: React.FC = () => {
             <Ruler className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(incomeStats.total_banding_income)}</div>
+            <div className="text-xl font-bold">{formatNumber(incomeStats.total_banding_income)}</div>
             <p className="text-xs text-muted-foreground">
               {language === 'uz' ? 'Bugun: ' : 'Сегодня: '}
               {formatNumber(incomeStats.today_banding_income)}
@@ -498,7 +498,7 @@ export const Services: React.FC = () => {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(incomeStats.total_income)}</div>
+            <div className="text-xl font-bold">{formatNumber(incomeStats.total_income)}</div>
           </CardContent>
         </Card>
 
@@ -510,7 +510,7 @@ export const Services: React.FC = () => {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatNumber(incomeStats.today_income)}</div>
+            <div className="text-xl font-bold">{formatNumber(incomeStats.today_income)}</div>
           </CardContent>
         </Card>
       </div>

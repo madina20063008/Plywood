@@ -543,7 +543,7 @@ export const SoldProductsPage: React.FC = () => {
               <div className="h-6 sm:h-8 w-12 sm:w-16 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
             ) : (
               <>
-                <div className="text-xl sm:text-2xl font-bold">{orderStats?.total_sales || 0}</div>
+                <div className="text-xl sm:text-xl font-bold">{orderStats?.total_sales || 0}</div>
                 <p className="text-xs text-muted-foreground">
                   {language === 'uz' ? 'Jami sotuvlar' : 'Всего продаж'}
                 </p>
@@ -562,7 +562,7 @@ export const SoldProductsPage: React.FC = () => {
               <div className="h-6 sm:h-8 w-20 sm:w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
             ) : (
               <>
-                <div className="text-lg sm:text-2xl font-bold">
+                <div className="text-lg sm:text-xl font-bold">
                   {formatCurrency(orderStats?.today_income || 0)} UZS
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -583,7 +583,7 @@ export const SoldProductsPage: React.FC = () => {
               <div className="h-6 sm:h-8 w-20 sm:w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
             ) : (
               <>
-                <div className="text-lg sm:text-2xl font-bold">
+                <div className="text-lg sm:text-xl font-bold">
                   {formatCurrency(orderStats?.total_income || 0)} UZS
                 </div>
                 <p className="text-xs text-muted-foreground">

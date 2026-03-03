@@ -7,7 +7,7 @@ import { Input } from '../components/ui/input';
 import { Card, CardContent, CardFooter, CardHeader } from '../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { Search, ShoppingCart, Package, Loader2, ChevronLeft, ChevronRight, Palette } from 'lucide-react';
+import { Search, ShoppingCart, Package, Loader2, ChevronLeft, ChevronRight, Palette, Filter } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 
@@ -53,10 +53,11 @@ export const ProductsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [selectedQualityId, setSelectedQualityId] = useState<string>('all');
+  const [showFilters, setShowFilters] = useState(false);
   
-  // Pagination state - ALWAYS 28 products per page
+  // Pagination state - ALWAYS 30 products per page
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [limit] = useState<number>(28); // Force 28 products per page
+  const [limit] = useState<number>(30); // Force 30 products per page
 
   const [isAddingToCart, setIsAddingToCart] = useState<Record<number, boolean>>({});
   const [localCart, setLocalCart] = useState<CartItem[]>([]);
@@ -68,7 +69,7 @@ export const ProductsPage: React.FC = () => {
     category: 'all', 
     quality: 'all', 
     page: 1, 
-    limit: 28 // Always 28
+    limit: 30 // Always 30
   });
 
   // Use a ref to track the last known totalProducts
@@ -126,7 +127,7 @@ export const ProductsPage: React.FC = () => {
     }
   }, [cart]);
 
-  // Initial data fetch - IMPORTANT: Always use limit 28
+  // Initial data fetch - IMPORTANT: Always use limit 30
   useEffect(() => {
     if (user && !initialLoadDone.current) {
       initialLoadDone.current = true;
@@ -135,8 +136,8 @@ export const ProductsPage: React.FC = () => {
           await Promise.all([
             fetchCategories(),
             fetchQualities(),
-            // CRITICAL: Always fetch with page=1 and limit=28, never rely on default
-            fetchProducts({ page: 1, limit: 28 }),
+            // CRITICAL: Always fetch with page=1 and limit=30, never rely on default
+            fetchProducts({ page: 1, limit: 30 }),
             fetchBasket()
           ]);
         } catch (error) {
@@ -296,21 +297,22 @@ export const ProductsPage: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 sm:space-y-6">
+      {/* Header with title and cart button - improved for mobile */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{t('products')}</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{t('products')}</h1>
+          <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400 mt-1">
             {language === 'uz' 
               ? `Mahsulotlarni tanlang va savatchaga qo'shing (Jami: ${effectiveTotalProducts} ta mahsulot)` 
               : `Выберите продукты и добавьте в корзину (Всего: ${effectiveTotalProducts} продуктов)`}
           </p>
         </div>
-        <Button size="lg" onClick={() => navigate('/cart')} className="relative">
-          <ShoppingCart className="mr-2 h-5 w-5" />
+        <Button size="default" sm:size="lg" onClick={() => navigate('/cart')} className="relative self-start sm:self-auto">
+          <ShoppingCart className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
           {t('cart')}
           {displayCart.length > 0 && (
-            <Badge className="ml-2 rounded-full px-2 py-0.5 bg-blue-600 text-white">
+            <Badge className="ml-2 rounded-full px-1.5 py-0.5 sm:px-2 bg-blue-600 text-white text-xs">
               {displayCart.length}
             </Badge>
           )}
@@ -318,45 +320,62 @@ export const ProductsPage: React.FC = () => {
       </div>
 
       <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <Input
-                placeholder={language === 'uz' ? 'Mahsulot nomi bo\'yicha qidirish...' : 'Поиск по названию...'}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            
-            <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId} disabled={isFetchingCategories}>
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder={language === 'uz' ? 'Kategoriya' : 'Категория'} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{language === 'uz' ? 'Barcha kategoriyalar' : 'Все категории'}</SelectItem>
-                {categories.map(cat => (
-                  <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Select value={selectedQualityId} onValueChange={setSelectedQualityId} disabled={isFetchingQualities}>
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder={language === 'uz' ? 'Sifat' : 'Качество'} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{language === 'uz' ? 'Barcha sifatlar' : 'Все качества'}</SelectItem>
-                {qualities.map(quality => (
-                  <SelectItem key={quality.id} value={quality.id.toString()}>{quality.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
+        <CardHeader className="p-4 sm:p-6">
+  {/* Search and filters in one row for desktop/tablet */}
+  <div className="flex flex-col sm:flex-row gap-3">
+    {/* Search input - takes remaining space */}
+    <div className="relative flex-1">
+      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+      <Input
+        placeholder={language === 'uz' ? 'Mahsulot nomi bo\'yicha qidirish...' : 'Поиск по названию...'}
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="pl-9 w-full"
+      />
+    </div>
+    
+    {/* Filter toggle button for mobile only */}
+    <div className="sm:hidden">
+      <Button 
+        variant="outline" 
+        className="w-full flex items-center justify-center gap-2"
+        onClick={() => setShowFilters(!showFilters)}
+      >
+        <Filter className="h-4 w-4" />
+        {showFilters ? (language === 'uz' ? 'Filtrni yopish' : 'Скрыть фильтры') : (language === 'uz' ? 'Filtrlarni ko\'rsatish' : 'Показать фильтры')}
+      </Button>
+    </div>
+
+    {/* Filters - always visible on desktop/tablet, toggleable on mobile */}
+    <div className={`${showFilters ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row gap-3 sm:gap-2`}>
+      <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId} disabled={isFetchingCategories}>
+        <SelectTrigger className="w-full sm:w-44 md:w-48">
+          <SelectValue placeholder={language === 'uz' ? 'Kategoriya' : 'Категория'} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">{language === 'uz' ? 'Barcha kategoriyalar' : 'Все категории'}</SelectItem>
+          {categories.map(cat => (
+            <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      
+      <Select value={selectedQualityId} onValueChange={setSelectedQualityId} disabled={isFetchingQualities}>
+        <SelectTrigger className="w-full sm:w-44 md:w-48">
+          <SelectValue placeholder={language === 'uz' ? 'Sifat' : 'Качество'} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">{language === 'uz' ? 'Barcha sifatlar' : 'Все качества'}</SelectItem>
+          {qualities.map(quality => (
+            <SelectItem key={quality.id} value={quality.id.toString()}>{quality.name}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  </div>
+</CardHeader>
         
-        <CardContent>
+        <CardContent className="p-4 sm:p-6">
           {isLoading && products.length === 0 ? (
             <div className="flex justify-center items-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
@@ -373,19 +392,17 @@ export const ProductsPage: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* Products Grid */}
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {/* Products Grid - Responsive layout */}
+              <div className="grid gap-3 sm:gap-4 md:gap-5 lg:gap-6 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
                 {products.map((product) => {
                   const isInCart = displayCart.some((item: CartItem) => item.product?.id === product.id);
                   const isAdding = isAddingToCart[product.id];
                   const qualityName = getQualityNameById(product.quality as any);
                   
                   return (
-                    <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow relative">
-                    
-                      
-                      {/* Image Container */}
-                      <div className="h-[150px] relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
+                    <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow relative flex flex-col h-full">
+                      {/* Image Container - fixed height for mobile */}
+                      <div className="h-[120px] sm:h-[140px] md:h-[150px] relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
                         {product.image ? (
                           <img 
                             src={product.image} 
@@ -410,49 +427,51 @@ export const ProductsPage: React.FC = () => {
                         )}
                       </div>
                       
-                      <CardHeader>
+                      <CardHeader className="p-3 sm:p-4">
                         <div>
-                            <h3 className="w-[220px] font-semibold text-lg leading-tight truncate" title={product.name}>
-                              {product.name}
-                            </h3>
-                          <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                            <p>{product.width} × {product.height} mm</p>
-                            <p>{t('thickness')}: {product.thickness} mm</p>
-                            <p>{t('quality')}: {qualityName || getQualityTranslation(product.quality as string)}</p>
+                          <h3 className="w-full font-semibold text-sm sm:text-base md:text-lg leading-tight line-clamp-2 min-h-[2.5rem] sm:min-h-[3rem]" title={product.name}>
+                            {product.name}
+                          </h3>
+                          <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 sm:mt-2 space-y-0.5">
+                            <p className="truncate">{product.width} × {product.height} mm</p>
+                            <p className="truncate">{t('thickness')}: {product.thickness} mm</p>
+                            <p className="truncate">{t('quality')}: {qualityName || getQualityTranslation(product.quality as string)}</p>
                           </div>
                         </div>
                       </CardHeader>
                       
-                      <CardFooter className="flex flex-col gap-3 pt-0">
+                      <CardFooter className="flex flex-col gap-2 sm:gap-3 pt-0 p-3 sm:p-4 mt-auto">
                         <div className="flex w-full items-center justify-between">
                           <div>
-                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                            <p className="text-lg sm:text-xl md:text-2xl font-bold text-blue-600 dark:text-blue-400">
                               {product.unitPrice?.toLocaleString() || '0'}
                             </p>
                             <p className="text-xs text-gray-500">UZS</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm text-gray-600 dark:text-gray-400">{t('stock')}</p>
-                            <Badge variant={(product.stockQuantity || 0) < 20 ? 'destructive' : 'default'}>
+                            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">{t('stock')}</p>
+                            <Badge variant={(product.stockQuantity || 0) < 20 ? 'destructive' : 'default'} className="text-xs">
                               {product.stockQuantity || 0}
                             </Badge>
                           </div>
                         </div>
                         
                         {isInCart ? (
-                          <Button className="w-full" variant="outline" onClick={() => navigate('/cart')}>
-                            <ShoppingCart className="mr-2 h-4 w-4" />
+                          <Button className="w-full h-8 sm:h-10 text-xs sm:text-sm" variant="outline" onClick={() => navigate('/cart')}>
+                            <ShoppingCart className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                             {language === 'uz' ? 'Savatda' : 'В корзине'}
                           </Button>
                         ) : (
                           <Button 
-                            className="w-full" 
+                            className="w-full h-8 sm:h-10 text-xs sm:text-sm" 
                             onClick={() => handleAddToCart(product)}
                             disabled={(product.stockQuantity || 0) === 0 || isAdding}
                           >
-                            {isAdding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShoppingCart className="mr-2 h-4 w-4" />}
-                            {(product.stockQuantity || 0) === 0 ? t('outOfStock') : 
-                             isAdding ? (language === 'uz' ? 'Qo\'shilmoqda...' : 'Добавление...') : t('addToCart')}
+                            {isAdding ? <Loader2 className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" /> : <ShoppingCart className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />}
+                            {(product.stockQuantity || 0) === 0 ? 
+                              (language === 'uz' ? 'Tugagan' : 'Нет в наличии') : 
+                              isAdding ? (language === 'uz' ? 'Qo\'shilmoqda...' : 'Добавление...') : 
+                              (language === 'uz' ? 'Qo\'shish' : 'В корзину')}
                           </Button>
                         )}
                       </CardFooter>
@@ -461,63 +480,92 @@ export const ProductsPage: React.FC = () => {
                 })}
               </div>
 
-              {/* Pagination Controls */}
+              {/* Pagination Controls - improved for mobile */}
               {totalPages > 1 && (
-                <div className="flex flex-col items-center gap-4 mt-8 pt-4 border-t">
-                
-                  
-                  {/* Pagination buttons */}
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-col items-center gap-4 mt-6 sm:mt-8 pt-4 border-t">
+                  {/* Mobile pagination - simplified */}
+                  <div className="flex items-center justify-between w-full sm:hidden">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handlePreviousPage}
                       disabled={currentPage === 1 || isFetchingProducts}
-                      className="min-w-[100px]"
+                      className="px-3"
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
                       {language === 'uz' ? 'Oldingi' : 'Назад'}
                     </Button>
                     
-                    {/* Page numbers */}
-                    <div className="flex items-center gap-1 mx-2">
-                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                        let pageNum;
-                        if (totalPages <= 5) {
-                          pageNum = i + 1;
-                        } else if (currentPage <= 3) {
-                          pageNum = i + 1;
-                        } else if (currentPage >= totalPages - 2) {
-                          pageNum = totalPages - 4 + i;
-                        } else {
-                          pageNum = currentPage - 2 + i;
-                        }
-                        
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={currentPage === pageNum ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => handlePageChange(pageNum)}
-                            disabled={isFetchingProducts}
-                            className="w-10"
-                          >
-                            {pageNum}
-                          </Button>
-                        );
-                      })}
-                    </div>
+                    <span className="text-sm text-gray-600">
+                      {currentPage} / {totalPages}
+                    </span>
                     
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleNextPage}
                       disabled={currentPage === totalPages || isFetchingProducts}
-                      className="min-w-[100px]"
+                      className="px-3"
                     >
                       {language === 'uz' ? 'Keyingi' : 'Вперед'}
                       <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
+                  </div>
+
+                  {/* Desktop pagination */}
+                  <div className="hidden sm:flex sm:flex-col items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handlePreviousPage}
+                        disabled={currentPage === 1 || isFetchingProducts}
+                        className="min-w-[100px]"
+                      >
+                        <ChevronLeft className="h-4 w-4 mr-1" />
+                        {language === 'uz' ? 'Oldingi' : 'Назад'}
+                      </Button>
+                      
+                      {/* Page numbers */}
+                      <div className="flex items-center gap-1 mx-2">
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNum;
+                          if (totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (currentPage <= 3) {
+                            pageNum = i + 1;
+                          } else if (currentPage >= totalPages - 2) {
+                            pageNum = totalPages - 4 + i;
+                          } else {
+                            pageNum = currentPage - 2 + i;
+                          }
+                          
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={currentPage === pageNum ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => handlePageChange(pageNum)}
+                              disabled={isFetchingProducts}
+                              className="w-10"
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleNextPage}
+                        disabled={currentPage === totalPages || isFetchingProducts}
+                        className="min-w-[100px]"
+                      >
+                        {language === 'uz' ? 'Keyingi' : 'Вперед'}
+                        <ChevronRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}

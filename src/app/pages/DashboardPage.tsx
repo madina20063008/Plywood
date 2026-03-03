@@ -173,7 +173,7 @@ export const DashboardPage: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">{t('todayRevenue')}</p>
-                <p className="text-2xl font-bold">{analytics.todayRevenue.toLocaleString()}</p>
+                <p className="text-xl font-bold">{analytics.todayRevenue.toLocaleString()}</p>
                 <p className="text-xs text-gray-500">UZS</p>
               </div>
             </div>
@@ -188,7 +188,7 @@ export const DashboardPage: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">{language === 'uz' ? 'Jami daromad' : 'Общая выручка'}</p>
-                <p className="text-2xl font-bold">{analytics.totalRevenue.toLocaleString()}</p>
+                <p className="text-xl font-bold">{analytics.totalRevenue.toLocaleString()}</p>
                 <p className="text-xs text-gray-500">UZS</p>
               </div>
             </div>
@@ -203,7 +203,7 @@ export const DashboardPage: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">{t('totalProducts')}</p>
-                <p className="text-2xl font-bold">{analytics.totalProducts}</p>
+                <p className="text-xl font-bold">{analytics.totalProducts}</p>
                 <p className="text-xs text-gray-500">{language === 'uz' ? 'mahsulot' : 'продуктов'}</p>
               </div>
             </div>
@@ -218,7 +218,7 @@ export const DashboardPage: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">{t('lowStock')}</p>
-                <p className="text-2xl font-bold">{analytics.lowStockProducts}</p>
+                <p className="text-xl font-bold">{analytics.lowStockProducts}</p>
                 <p className="text-xs text-gray-500">{language === 'uz' ? 'mahsulot' : 'продуктов'}</p>
               </div>
             </div>
@@ -293,7 +293,7 @@ export const DashboardPage: React.FC = () => {
                   <span className="font-semibold text-gray-900 dark:text-gray-100">
                     {language === 'uz' ? 'Jami xizmatlar' : 'Всего услуг'}
                   </span>
-                  <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                  <span className="text-xl font-bold text-purple-600 dark:text-purple-400">
                     {formatNumber(incomeStats.total_income)}
                   </span>
                 </div>
