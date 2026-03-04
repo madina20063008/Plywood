@@ -273,7 +273,7 @@ export const ReportsPage: React.FC = () => {
       </div>
 
       {/* Period Filter and Sales Table */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>
@@ -362,7 +362,7 @@ export const ReportsPage: React.FC = () => {
             </Table>
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   );
 };

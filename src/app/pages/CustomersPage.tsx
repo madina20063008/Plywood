@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useApp } from "../../lib/context";
 import { getTranslation } from "../../lib/translations";
 import { Customer, PaymentHistoryResponse } from "../../lib/types";
@@ -29,15 +29,10 @@ import {
   Search,
   User,
   DollarSign,
-  Phone,
-  MapPin,
-  Mail,
-  FileText,
   Eye,
   CreditCard,
   TrendingUp,
   TrendingDown,
-  Calendar,
   History,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -55,7 +50,7 @@ export const CustomersPage: React.FC = () => {
     isFetchingCustomerStats,
     coverCustomerDebt,
     getCustomerPaymentHistory,
-    isFetchingCustomers, // Add this line
+    isFetchingCustomers,
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,10 +66,14 @@ export const CustomersPage: React.FC = () => {
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentDescription, setPaymentDescription] = useState("");
+  const isMountedRef = useRef(false);
 
   // Payment history state
   const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryResponse | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Ref to track initial fetch
+  const initialFetchRef = useRef(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -86,28 +85,42 @@ export const CustomersPage: React.FC = () => {
 
   const t = (key: string) => getTranslation(language, key as any);
 
-  // Search customers with debounce
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (user) {
-        fetchCustomers(searchTerm);
-      }
-    }, 500);
-
-    return () => clearTimeout(timer);
-  }, [searchTerm, user, fetchCustomers]);
-
-  // Initial fetch
-  useEffect(() => {
+  // Memoized fetchCustomers function
+  const memoizedFetchCustomers = useCallback(async (search?: string) => {
     if (user) {
-      fetchCustomers();
+      await fetchCustomers(search);
     }
   }, [user, fetchCustomers]);
+
+  // Initial fetch - faqat bir marta
+  useEffect(() => {
+    if (user && !initialFetchRef.current) {
+      initialFetchRef.current = true;
+      memoizedFetchCustomers();
+    }
+  }, [user, memoizedFetchCustomers]);
+
+  useEffect(() => {
+  if (!user) return;
+
+  if (!isMountedRef.current) {
+    isMountedRef.current = true;
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    memoizedFetchCustomers(searchTerm);
+  }, 500);
+
+  return () => clearTimeout(timer);
+}, [searchTerm, user, memoizedFetchCustomers]);
 
   // Fetch payment history when customer is selected
   useEffect(() => {
     if (selectedCustomer && user) {
       fetchPaymentHistory(parseInt(selectedCustomer.id));
+    } else {
+      setPaymentHistory(null);
     }
   }, [selectedCustomer, user]);
 
@@ -119,6 +132,11 @@ export const CustomersPage: React.FC = () => {
       setPaymentHistory(history);
     } catch (error) {
       console.error("Error fetching payment history:", error);
+      toast.error(
+        language === "uz"
+          ? "To'lov tarixini yuklashda xatolik"
+          : "Ошибка загрузки истории платежей"
+      );
     } finally {
       setIsLoadingHistory(false);
     }
@@ -229,7 +247,7 @@ export const CustomersPage: React.FC = () => {
 
   const handleDelete = async (customer: Customer) => {
     if (
-      confirm(
+      window.confirm(
         language === "uz"
           ? `${customer.name} mijozini o'chirmoqchimisiz?`
           : `Удалить клиента ${customer.name}?`,
@@ -279,7 +297,7 @@ export const CustomersPage: React.FC = () => {
       await fetchPaymentHistory(parseInt(selectedCustomer.id));
       
       // Refresh customers to get updated debt
-      await fetchCustomers();
+      await memoizedFetchCustomers();
 
       toast.success(
         language === "uz"
