@@ -868,7 +868,6 @@ export const Services: React.FC = () => {
                     <TableHead>ID</TableHead>
                     <TableHead>{language === 'uz' ? 'Qalinlik' : 'Толщина'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Uzunlik (mm)' : 'Длина (мм)'}</TableHead>
-                    <TableHead>{language === 'uz' ? 'Chiziqli metr' : 'Пог. метры'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Jami summa' : 'Общая сумма'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Sana' : 'Дата'}</TableHead>
                     <TableHead className="text-right">{language === 'uz' ? 'Amallar' : 'Действия'}</TableHead>
@@ -894,11 +893,7 @@ export const Services: React.FC = () => {
                           )}
                         </TableCell>
                         <TableCell>{parseNumber(banding.length).toFixed(2)}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {parseNumber(banding.linear_meter).toFixed(2)} m
-                          </Badge>
-                        </TableCell>
+                        
                         <TableCell>
                           <Badge variant="secondary">
                             {parseNumber(banding.total_price).toLocaleString()} UZS
