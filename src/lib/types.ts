@@ -645,3 +645,11 @@ export interface RangeStats {
   banding_income: number;
   cutting_income: number;
 }
+
+export interface DailyStats {
+  date: string;
+  cashbox_total: number;
+  product_sales: number;
+  banding_income: number;
+  cutting_income: number;
+}

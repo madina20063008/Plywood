@@ -26,7 +26,8 @@ import {
   CoverDebtRequest,
   PaymentHistoryResponse,
   PaginatedResponse,
-  RangeStats
+  RangeStats,
+  DailyStats
 } from "./types";
 
 // api.ts
@@ -719,9 +720,6 @@ getStats: (): Promise<{
   },
 };
 
-// Add this to your api.ts file inside the existing api object or as a new export
-
-// Range Stats API
 export const rangeStatsApi = {
   // Get statistics for a date range
   getStats: (from?: string, to?: string): Promise<RangeStats> => {
@@ -737,5 +735,22 @@ export const rangeStatsApi = {
     }
     
     return apiRequest<RangeStats>(endpoint);
+  },
+};
+
+export const dailyStatsApi = {
+  // Get statistics for a specific date
+  getStats: (date?: string): Promise<DailyStats> => {
+    let endpoint = '/utils/daily/stats/';
+    
+    const params = new URLSearchParams();
+    if (date) params.append('date', date);
+    
+    const queryString = params.toString();
+    if (queryString) {
+      endpoint += `?${queryString}`;
+    }
+    
+    return apiRequest<DailyStats>(endpoint);
   },
 };

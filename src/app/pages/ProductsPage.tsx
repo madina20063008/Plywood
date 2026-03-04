@@ -443,7 +443,7 @@ export const ProductsPage: React.FC = () => {
                       <CardFooter className="flex flex-col gap-2 sm:gap-3 pt-0 p-3 sm:p-4 mt-auto">
                         <div className="flex w-full items-center justify-between">
                           <div>
-                            <p className="text-lg sm:text-xl md:text-2xl font-bold text-blue-600 dark:text-blue-400">
+                            <p className="text-lg sm:text-xl font-bold text-blue-600 dark:text-blue-400">
                               {product.unitPrice?.toLocaleString() || '0'}
                             </p>
                             <p className="text-xs text-gray-500">UZS</p>

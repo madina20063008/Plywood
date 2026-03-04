@@ -1,6 +1,6 @@
 import React, {createContext,useContext,useState,useEffect,ReactNode,useCallback,useRef,} from "react";
-import {authApi,customerApi,userApi,productApi,categoryApi,acceptanceApi,basketApi,cuttingApi,bandingApi,thicknessApi,orderApi,notificationsApi,dashboardApi,orderStatsApi,qualityApi,supplierApi, rangeStatsApi} from "../lib/api";
-import {User,UserRole,Product,Customer,CartItem,Sale,ProductArrival,CustomerTransaction,ApiCustomer,CreateCustomerData,ApiUser,CreateUserData,ApiProduct,CreateProductData,ProductFilters,ApiCategory,ApiAcceptanceHistory,CuttingService,EdgeBandingService,CreateCuttingData,CreateBandingData,ApiThickness,CreateThicknessData,ApiOrder,CreateOrderData,LowStockNotification,DashboardStats,OrderStats,DebtStats,ApiQuality,ApiSupplier,CreateSupplierData,SupplierPaymentData,SupplierTransaction,Supplier,PaymentHistoryResponse, RangeStats,} from "../lib/types";
+import {authApi,customerApi,userApi,productApi,categoryApi,acceptanceApi,basketApi,cuttingApi,bandingApi,thicknessApi,orderApi,notificationsApi,dashboardApi,orderStatsApi,qualityApi,supplierApi, rangeStatsApi, dailyStatsApi} from "../lib/api";
+import {User,UserRole,Product,Customer,CartItem,Sale,ProductArrival,CustomerTransaction,ApiCustomer,CreateCustomerData,ApiUser,CreateUserData,ApiProduct,CreateProductData,ProductFilters,ApiCategory,ApiAcceptanceHistory,CuttingService,EdgeBandingService,CreateCuttingData,CreateBandingData,ApiThickness,CreateThicknessData,ApiOrder,CreateOrderData,LowStockNotification,DashboardStats,OrderStats,DebtStats,ApiQuality,ApiSupplier,CreateSupplierData,SupplierPaymentData,SupplierTransaction,Supplier,PaymentHistoryResponse, RangeStats, DailyStats,} from "../lib/types";
 import { toast } from "sonner";
 interface AppContextType {
   user: User | null;
@@ -21,6 +21,9 @@ interface AppContextType {
   thicknesses: ApiThickness[];
   orders: ApiOrder[];
   suppliers: Supplier[];
+  dailyStats: DailyStats | null;
+  isFetchingDailyStats: boolean;
+  fetchDailyStats: (date?: string) => Promise<void>;
   customerStats: {
     total_customers: number;
     debtor_customers: number;
@@ -199,6 +202,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
   const [isUpdatingSupplier, setIsUpdatingSupplier] = useState(false);
   const [isDeletingSupplier, setIsDeletingSupplier] = useState(false);
   const [isAddingSupplierPayment, setIsAddingSupplierPayment] = useState(false);
+  const [dailyStats, setDailyStats] = useState<DailyStats | null>(null);
+const [isFetchingDailyStats, setIsFetchingDailyStats] = useState(false);
   const [isFetchingAcceptanceHistory, setIsFetchingAcceptanceHistory] =
     useState(false);
   const [isFetchingBasket, setIsFetchingBasket] = useState(false);
@@ -277,6 +282,7 @@ const [isFetchingSupplierStats, setIsFetchingSupplierStats] = useState(false);
   const hasFetchedQualities = useRef(false);
   const hasFetchedSupplierStats = useRef(false);
   const hasFetchedSuppliers = useRef(false);
+  const hasFetchedDailyStats = useRef(false);
   const hasFetchedRangeStats = useRef(false);
   const checkTokenValidity = useCallback(async () => {
     const token = localStorage.getItem("accessToken");
@@ -397,6 +403,25 @@ const getCustomerPaymentHistory = async (id: number): Promise<PaymentHistoryResp
     return null;
   }
 };
+const fetchDailyStats = useCallback(async (date?: string) => {
+  if (!user) return;
+  
+  setIsFetchingDailyStats(true);
+  try {
+    const stats = await dailyStatsApi.getStats(date);
+    setDailyStats(stats);
+    hasFetchedDailyStats.current = true;
+  } catch (error) {
+    console.error("Failed to fetch daily stats:", error);
+    toast.error(
+      language === "uz"
+        ? "Kunlik statistikani yuklashda xatolik yuz berdi"
+        : "Ошибка при загрузке дневной статистики"
+    );
+  } finally {
+    setIsFetchingDailyStats(false);
+  }
+}, [user, language]);
   const fetchQualities = useCallback(async () => {
     if (!user) return;
     setIsFetchingQualities(true);
@@ -2226,6 +2251,9 @@ const fetchProducts = useCallback(async (filters?: ProductFilters) => {
   isFetchingRangeStats,
   fetchRangeStats,
     products,
+    dailyStats,
+  isFetchingDailyStats,
+  fetchDailyStats,
     customers,
     cart,
     sales,
