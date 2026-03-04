@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../../lib/context';
 import { getTranslation } from '../../lib/translations';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -10,16 +10,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { Scissors, Ruler, PlusCircle, Trash2, TrendingUp, DollarSign, Edit2, Loader2, Calendar } from 'lucide-react';
+import { Scissors, Ruler, PlusCircle, Trash2, DollarSign, Edit2, Loader2, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import {
   cuttingApi,
   bandingApi,
   thicknessApi,
+  dailyStatsApi,
 } from '../../lib/api';
-import { ApiCutting, ApiBanding, ApiThickness } from '../../lib/types';
+import { ApiCutting, ApiBanding, ApiThickness, DailyStats } from '../../lib/types';
 import { format } from 'date-fns';
+import { Calendar as CalendarComponent } from '../components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '../components/ui/popover';
+import { cn } from '../components/ui/utils';
 
 interface IncomeStats {
   total_cutting_income: number;
@@ -39,6 +47,11 @@ export const Services: React.FC = () => {
   const { language, user } = useApp();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('cutting');
+  
+  // Date filter state
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [dailyStats, setDailyStats] = useState<DailyStats | null>(null);
+  const [isFetchingDailyStats, setIsFetchingDailyStats] = useState(false);
   
   // State for services
   const [cuttings, setCuttings] = useState<ApiCutting[]>([]);
@@ -84,7 +97,7 @@ export const Services: React.FC = () => {
   });
 
   const [newThickness, setNewThickness] = useState({
-    text: '', // Changed from 'size' to 'text' to match API
+    text: '',
     price: ''
   });
 
@@ -103,7 +116,7 @@ export const Services: React.FC = () => {
 
   const [editThickness, setEditThickness] = useState<{
     id: number;
-    text: string; // Changed from 'size' to 'text' to match API
+    text: string;
     price: string;
   } | null>(null);
 
@@ -120,16 +133,18 @@ export const Services: React.FC = () => {
     }
   };
 
-  // Format date with time
-  const formatDateTime = (dateString: string | undefined) => {
-    if (!dateString) return '-';
+  // Fetch daily stats when date changes
+  const fetchDailyStats = useCallback(async (date?: string) => {
+    setIsFetchingDailyStats(true);
     try {
-      const date = new Date(dateString);
-      return format(date, 'dd.MM.yyyy HH:mm');
+      const stats = await dailyStatsApi.getStats(date);
+      setDailyStats(stats);
     } catch (error) {
-      return '-';
+      console.error("Failed to fetch daily stats:", error);
+    } finally {
+      setIsFetchingDailyStats(false);
     }
-  };
+  }, []);
 
   // Fetch all data
   const fetchIncomeStats = async () => {
@@ -153,11 +168,28 @@ export const Services: React.FC = () => {
     }
   };
 
-  const fetchCuttings = async () => {
+  const fetchCuttings = async (date?: Date) => {
     if (!user) return;
     setIsLoadingCuttings(true);
     try {
-      const data = await cuttingApi.getAll();
+      let data = await cuttingApi.getAll();
+      
+      // Filter by date if selected
+      if (date) {
+        const selectedDateStr = format(date, 'yyyy-MM-dd');
+        data = data.filter(cutting => {
+          const cuttingDate = cutting.created_at ? format(new Date(cutting.created_at), 'yyyy-MM-dd') : '';
+          return cuttingDate === selectedDateStr;
+        });
+      }
+      
+      // Sort by created_at in descending order (newest first)
+      data.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
+      
       setCuttings(data || []);
     } catch (error) {
       console.error('Failed to fetch cuttings:', error);
@@ -167,12 +199,28 @@ export const Services: React.FC = () => {
     }
   };
 
-  const fetchBandings = async () => {
+  const fetchBandings = async (date?: Date) => {
     if (!user) return;
     setIsLoadingBandings(true);
     try {
-      const data = await bandingApi.getAll();
-      console.log('Fetched bandings:', data);
+      let data = await bandingApi.getAll();
+      
+      // Filter by date if selected
+      if (date) {
+        const selectedDateStr = format(date, 'yyyy-MM-dd');
+        data = data.filter(banding => {
+          const bandingDate = banding.created_at ? format(new Date(banding.created_at), 'yyyy-MM-dd') : '';
+          return bandingDate === selectedDateStr;
+        });
+      }
+      
+      // Sort by created_at in descending order (newest first)
+      data.sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
+      
       setBandings(data || []);
     } catch (error) {
       console.error('Failed to fetch bandings:', error);
@@ -196,14 +244,23 @@ export const Services: React.FC = () => {
     }
   };
 
+  // Effect for date change
   useEffect(() => {
     if (user) {
+      if (selectedDate) {
+        const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+        fetchDailyStats(formattedDate);
+        fetchCuttings(selectedDate);
+        fetchBandings(selectedDate);
+      } else {
+        fetchDailyStats();
+        fetchCuttings();
+        fetchBandings();
+      }
       fetchIncomeStats();
-      fetchCuttings();
-      fetchBandings();
       fetchThicknesses();
     }
-  }, [user]);
+  }, [user, selectedDate, fetchDailyStats]);
 
   // Reset form when dialog opens/closes
   useEffect(() => {
@@ -244,9 +301,16 @@ export const Services: React.FC = () => {
         total_price: totalPrice.toString()
       });
       
-      setCuttings(prev => [data, ...prev]);
+      // Refresh data for current date
+      if (selectedDate) {
+        await fetchCuttings(selectedDate);
+      } else {
+        await fetchCuttings();
+      }
+      
       setIsCuttingDialogOpen(false);
       fetchIncomeStats();
+      fetchDailyStats(selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined);
       
       toast.success(language === 'uz' ? 'Kesish xizmati qo\'shildi' : 'Услуга распила добавлена');
     } catch (error) {
@@ -280,9 +344,16 @@ export const Services: React.FC = () => {
         total_price: totalPrice.toString()
       });
       
-      setCuttings(prev => prev.map(c => c.id === editCutting.id ? updatedData : c));
+      // Refresh data for current date
+      if (selectedDate) {
+        await fetchCuttings(selectedDate);
+      } else {
+        await fetchCuttings();
+      }
+      
       setIsEditCuttingDialogOpen(false);
       fetchIncomeStats();
+      fetchDailyStats(selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined);
       
       toast.success(language === 'uz' ? 'Kesish xizmati yangilandi' : 'Услуга распила обновлена');
     } catch (error) {
@@ -301,11 +372,18 @@ export const Services: React.FC = () => {
         length: newBanding.length
       });
       
-      await fetchBandings();
+      // Refresh data for current date
+      if (selectedDate) {
+        await fetchBandings(selectedDate);
+      } else {
+        await fetchBandings();
+      }
       
       setIsBandingDialogOpen(false);
       setNewBanding({ thickness: '', length: '' });
       fetchIncomeStats();
+      fetchDailyStats(selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined);
+      
       toast.success(language === 'uz' ? 'Kromkalash xizmati qo\'shildi' : 'Услуга кромкования добавлена');
     } catch (error) {
       console.error('Failed to create banding:', error);
@@ -317,7 +395,7 @@ export const Services: React.FC = () => {
     if (!user) return;
     try {
       const data = await thicknessApi.create({
-        text: newThickness.text, // Sending 'text' field to API
+        text: newThickness.text,
         price: newThickness.price
       });
       setThicknesses(prev => [data, ...prev]);
@@ -347,10 +425,18 @@ export const Services: React.FC = () => {
         length: editBanding.length
       });
       
-      await fetchBandings();
+      // Refresh data for current date
+      if (selectedDate) {
+        await fetchBandings(selectedDate);
+      } else {
+        await fetchBandings();
+      }
+      
       setIsEditBandingDialogOpen(false);
       setEditBanding(null);
       fetchIncomeStats();
+      fetchDailyStats(selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined);
+      
       toast.success(language === 'uz' ? 'Kromkalash xizmati yangilandi' : 'Услуга кромкования обновлена');
     } catch (error) {
       console.error('Failed to update banding:', error);
@@ -361,7 +447,7 @@ export const Services: React.FC = () => {
   const handleOpenEditThickness = (thickness: ApiThickness) => {
     setEditThickness({
       id: thickness.id,
-      text: thickness.text, // Using 'text' field from API response
+      text: thickness.text,
       price: thickness.price
     });
     setIsEditThicknessDialogOpen(true);
@@ -371,7 +457,7 @@ export const Services: React.FC = () => {
     if (!user || !editThickness) return;
     try {
       const updatedData = await thicknessApi.update(editThickness.id, {
-        text: editThickness.text, // Sending 'text' field to API
+        text: editThickness.text,
         price: editThickness.price
       });
       
@@ -392,8 +478,17 @@ export const Services: React.FC = () => {
     
     try {
       await cuttingApi.delete(id);
-      setCuttings(prev => prev.filter(c => c.id !== id));
+      
+      // Refresh data for current date
+      if (selectedDate) {
+        await fetchCuttings(selectedDate);
+      } else {
+        await fetchCuttings();
+      }
+      
       fetchIncomeStats();
+      fetchDailyStats(selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined);
+      
       toast.success(language === 'uz' ? 'Kesish xizmati o\'chirildi' : 'Услуга распила удалена');
     } catch (error) {
       console.error('Failed to delete cutting:', error);
@@ -407,8 +502,17 @@ export const Services: React.FC = () => {
     
     try {
       await bandingApi.delete(id);
-      setBandings(prev => prev.filter(b => b.id !== id));
+      
+      // Refresh data for current date
+      if (selectedDate) {
+        await fetchBandings(selectedDate);
+      } else {
+        await fetchBandings();
+      }
+      
       fetchIncomeStats();
+      fetchDailyStats(selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined);
+      
       toast.success(language === 'uz' ? 'Kromkalash xizmati o\'chirildi' : 'Услуга кромкования удалена');
     } catch (error) {
       console.error('Failed to delete banding:', error);
@@ -463,63 +567,150 @@ export const Services: React.FC = () => {
         </div>
       </div>
 
-      {/* Income Stats Cards */}
-      <div className="grid gap-4 grid-cols-2">
+      {/* Date Filter Card */}
+      <Card className="w-full">
+        <div className="flex flex-row items-center justify-between p-6">
+          <CardHeader className="p-0 m-0">
+            <CardTitle className="text-lg whitespace-nowrap">
+              {language === "uz"
+                ? "Sana bo'yicha statistika"
+                : "Статистика по дате"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-full sm:w-[240px] justify-start text-left font-normal",
+                      !selectedDate && "text-muted-foreground",
+                    )}
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {selectedDate
+                      ? format(selectedDate, "dd.MM.yyyy")
+                      : language === "uz"
+                        ? "Sanani tanlang"
+                        : "Выберите дату"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={setSelectedDate}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </CardContent>
+        </div>
+      </Card>
+
+      {/* Daily Statistics Cards */}
+      <div className="grid gap-4 sm:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              {language === 'uz' ? 'Kesish (Jami)' : 'Распил (Всего)'}
-            </CardTitle>
-            <Scissors className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="sm:text-xl text-[15px] font-bold">{formatNumber(incomeStats.total_cutting_income)}</div>
-            <p className="text-xs text-muted-foreground">
-              {language === 'uz' ? 'Bugun: ' : 'Сегодня: '}
-              {formatNumber(incomeStats.today_cutting_income)}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              {language === 'uz' ? 'Kromka (Jami)' : 'Кромкование (Всего)'}
-            </CardTitle>
-            <Ruler className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="sm:text-xl text-[15px] font-bold">{formatNumber(incomeStats.total_banding_income)}</div>
-            <p className="text-xs text-muted-foreground">
-              {language === 'uz' ? 'Bugun: ' : 'Сегодня: '}
-              {formatNumber(incomeStats.today_banding_income)}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              {language === 'uz' ? 'Jami daromad' : 'Общий доход'}
+              {language === "uz" ? "Kassa jami" : "Касса всего"}
             </CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold">{formatNumber(incomeStats.total_income)}</div>
+            {isFetchingDailyStats ? (
+              <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                  {dailyStats?.cashbox_total?.toLocaleString() || 0} UZS
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {selectedDate
+                    ? format(selectedDate, "dd.MM.yyyy")
+                    : format(new Date(), "dd.MM.yyyy")}
+                </p>
+              </>
+            )}
           </CardContent>
-        </Card> */}
+        </Card>
 
-        {/* <Card>
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              {language === 'uz' ? 'Bugungi daromad' : 'Доход за сегодня'}
+              {language === "uz" ? "Mahsulot sotuvi" : "Продажи продуктов"}
             </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold">{formatNumber(incomeStats.today_income)}</div>
+            {isFetchingDailyStats ? (
+              <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                  {dailyStats?.product_sales?.toLocaleString() || 0} UZS
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {selectedDate
+                    ? format(selectedDate, "dd.MM.yyyy")
+                    : format(new Date(), "dd.MM.yyyy")}
+                </p>
+              </>
+            )}
           </CardContent>
-        </Card> */}
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              {language === "uz" ? "Kromkalash daromadi" : "Доход от кромкования"}
+            </CardTitle>
+            <Ruler className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isFetchingDailyStats ? (
+              <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                  {dailyStats?.banding_income?.toLocaleString() || 0} UZS
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {selectedDate
+                    ? format(selectedDate, "dd.MM.yyyy")
+                    : format(new Date(), "dd.MM.yyyy")}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              {language === "uz" ? "Kesish daromadi" : "Доход от распила"}
+            </CardTitle>
+            <Scissors className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isFetchingDailyStats ? (
+              <div className="h-8 w-24 animate-pulse bg-gray-200 dark:bg-gray-700 rounded"></div>
+            ) : (
+              <>
+                <div className="text-xl font-bold text-orange-600 dark:text-orange-400">
+                  {dailyStats?.cutting_income?.toLocaleString() || 0} UZS
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {selectedDate
+                    ? format(selectedDate, "dd.MM.yyyy")
+                    : format(new Date(), "dd.MM.yyyy")}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Main Content Tabs */}
@@ -709,45 +900,53 @@ export const Services: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {cuttings.map((cutting) => (
-                    <TableRow key={cutting.id}>
-                      <TableCell className="font-medium">#{cutting.id}</TableCell>
-                      <TableCell>{cutting.count.toLocaleString()}</TableCell>
-                      <TableCell>{parseNumber(cutting.price).toLocaleString()} UZS</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {parseNumber(cutting.total_price).toLocaleString()} UZS
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
-                          <Calendar className="h-3 w-3" />
-                          {formatDate(cutting.created_at)}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleOpenEditCutting(cutting)}
-                            className="text-blue-500 hover:text-blue-700 hover:bg-blue-100"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteCutting(cutting.id)}
-                            className="text-red-500 hover:text-red-700 hover:bg-red-100"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                  {isLoadingCuttings ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8">
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-400" />
                       </TableCell>
                     </TableRow>
-                  ))}
-                  {cuttings.length === 0 && (
+                  ) : (
+                    cuttings.map((cutting) => (
+                      <TableRow key={cutting.id}>
+                        <TableCell className="font-medium">#{cutting.id}</TableCell>
+                        <TableCell>{cutting.count.toLocaleString()}</TableCell>
+                        <TableCell>{parseNumber(cutting.price).toLocaleString()} UZS</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            {parseNumber(cutting.total_price).toLocaleString()} UZS
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(cutting.created_at)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenEditCutting(cutting)}
+                              className="text-blue-500 hover:text-blue-700 hover:bg-blue-100"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteCutting(cutting.id)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-100"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  {!isLoadingCuttings && cuttings.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                         {language === 'uz' 
@@ -913,61 +1112,69 @@ export const Services: React.FC = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {bandings.map((banding) => {
-                    const thickness = banding.thickness;
-                    
-                    return (
-                      <TableRow key={banding.id}>
-                        <TableCell className="font-medium">#{banding.id}</TableCell>
-                        <TableCell>
-                          {thickness ? (
-                            <div>
-                              <div>{thickness.text}</div>
-                              <div className="text-xs text-gray-500">
-                                {parseNumber(thickness.price).toLocaleString()} UZS
+                  {isLoadingBandings ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-8">
+                        <Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-400" />
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    bandings.map((banding) => {
+                      const thickness = banding.thickness;
+                      
+                      return (
+                        <TableRow key={banding.id}>
+                          <TableCell className="font-medium">#{banding.id}</TableCell>
+                          <TableCell>
+                            {thickness ? (
+                              <div>
+                                <div>{thickness.text}</div>
+                                <div className="text-xs text-gray-500">
+                                  {parseNumber(thickness.price).toLocaleString()} UZS
+                                </div>
                               </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{parseNumber(banding.length).toFixed(2)}</TableCell>
+                          
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {parseNumber(banding.total_price).toLocaleString()} UZS
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
+                              <Calendar className="h-3 w-3" />
+                              {formatDate(banding.created_at)}
                             </div>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>{parseNumber(banding.length).toFixed(2)}</TableCell>
-                        
-                        <TableCell>
-                          <Badge variant="secondary">
-                            {parseNumber(banding.total_price).toLocaleString()} UZS
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-400">
-                            <Calendar className="h-3 w-3" />
-                            {formatDate(banding.created_at)}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleOpenEditBanding(banding)}
-                              className="text-blue-500 hover:text-blue-700 hover:bg-blue-100"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteBanding(banding.id)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-100"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {bandings.length === 0 && (
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleOpenEditBanding(banding)}
+                                className="text-blue-500 hover:text-blue-700 hover:bg-blue-100"
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteBanding(banding.id)}
+                                className="text-red-500 hover:text-red-700 hover:bg-red-100"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                  {!isLoadingBandings && bandings.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-8 text-gray-500">
                         {language === 'uz' 
