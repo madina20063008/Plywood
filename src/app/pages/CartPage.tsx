@@ -884,7 +884,7 @@ export const CartPage: React.FC = () => {
                               });
                             }
                           }}>
-                            <DialogTrigger asChild>
+                            {/* <DialogTrigger asChild>
                               <Button variant="outline" size="sm" disabled={isRemoving || isAdding || item.cuttingService} className="text-xs sm:text-sm">
                                 <Scissors className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                                 <span className="truncate max-w-[80px] sm:max-w-none">
@@ -895,7 +895,7 @@ export const CartPage: React.FC = () => {
                                   )}
                                 </span>
                               </Button>
-                            </DialogTrigger>
+                            </DialogTrigger> */}
                             <DialogContent className="w-[95vw] max-w-md mx-auto">
                               <DialogHeader>
                                 <DialogTitle className="text-lg">{t('cuttingService')}</DialogTitle>
@@ -981,7 +981,7 @@ export const CartPage: React.FC = () => {
                               });
                             }
                           }}>
-                            <DialogTrigger asChild>
+                            {/* <DialogTrigger asChild>
                               <Button variant="outline" size="sm" disabled={isRemoving || isAdding || item.edgeBandingService} className="text-xs sm:text-sm">
                                 <Ruler className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
                                 <span className="truncate max-w-[80px] sm:max-w-none">
@@ -992,7 +992,7 @@ export const CartPage: React.FC = () => {
                                   )}
                                 </span>
                               </Button>
-                            </DialogTrigger>
+                            </DialogTrigger> */}
                             <DialogContent className="w-[95vw] max-w-md mx-auto">
                               <DialogHeader>
                                 <DialogTitle className="text-lg">{t('edgeBandingService')}</DialogTitle>

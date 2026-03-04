@@ -355,5 +355,11 @@ export const translations = {
 };
 
 export const getTranslation = (lang: Language, key: keyof typeof translations.uz): string => {
+  // Add a safety check
+  if (!translations[lang]) {
+    console.error(`Translation for language "${lang}" not found, falling back to Uzbek`);
+    return translations.uz[key] || key;
+  }
+  
   return translations[lang][key] || key;
 };

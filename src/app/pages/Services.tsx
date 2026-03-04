@@ -464,7 +464,7 @@ export const Services: React.FC = () => {
       </div>
 
       {/* Income Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
@@ -473,7 +473,7 @@ export const Services: React.FC = () => {
             <Scissors className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold">{formatNumber(incomeStats.total_cutting_income)}</div>
+            <div className="sm:text-xl text-[15px] font-bold">{formatNumber(incomeStats.total_cutting_income)}</div>
             <p className="text-xs text-muted-foreground">
               {language === 'uz' ? 'Bugun: ' : 'Сегодня: '}
               {formatNumber(incomeStats.today_cutting_income)}
@@ -484,12 +484,12 @@ export const Services: React.FC = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              {language === 'uz' ? 'Kromkalash (Jami)' : 'Кромкование (Всего)'}
+              {language === 'uz' ? 'Kromka (Jami)' : 'Кромкование (Всего)'}
             </CardTitle>
             <Ruler className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold">{formatNumber(incomeStats.total_banding_income)}</div>
+            <div className="sm:text-xl text-[15px] font-bold">{formatNumber(incomeStats.total_banding_income)}</div>
             <p className="text-xs text-muted-foreground">
               {language === 'uz' ? 'Bugun: ' : 'Сегодня: '}
               {formatNumber(incomeStats.today_banding_income)}
@@ -497,7 +497,7 @@ export const Services: React.FC = () => {
           </CardContent>
         </Card>
 
-        <Card>
+        {/* <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               {language === 'uz' ? 'Jami daromad' : 'Общий доход'}
@@ -507,9 +507,9 @@ export const Services: React.FC = () => {
           <CardContent>
             <div className="text-xl font-bold">{formatNumber(incomeStats.total_income)}</div>
           </CardContent>
-        </Card>
+        </Card> */}
 
-        <Card>
+        {/* <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               {language === 'uz' ? 'Bugungi daromad' : 'Доход за сегодня'}
@@ -519,7 +519,7 @@ export const Services: React.FC = () => {
           <CardContent>
             <div className="text-xl font-bold">{formatNumber(incomeStats.today_income)}</div>
           </CardContent>
-        </Card>
+        </Card> */}
       </div>
 
       {/* Main Content Tabs */}
@@ -765,8 +765,47 @@ export const Services: React.FC = () => {
         {/* Banding Tab */}
         <TabsContent value="banding" className="space-y-4">
           <div className="flex justify-end gap-2">
+            <Dialog open={isThicknessDialogOpen} onOpenChange={setIsThicknessDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="flex items-center gap-2">
+                  <PlusCircle className="h-5 w-5" />
+                  {language === 'uz' ? 'Qalinlik qo\'shish' : 'Добавить толщину'}
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>
+                    {language === 'uz' ? 'Yangi qalinlik' : 'Новая толщина'}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label>{language === 'uz' ? 'Qalinlik (mm)' : 'Толщина (мм)'}</Label>
+                    <Input
+                      type="text"
+                      value={newThickness.text}
+                      onChange={(e) => setNewThickness({...newThickness, text: e.target.value})}
+                      placeholder="16 mm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{language === 'uz' ? 'Narxi (UZS/m)' : 'Цена (UZS/м)'}</Label>
+                    <Input
+                      type="text"
+                      value={newThickness.price}
+                      onChange={(e) => setNewThickness({...newThickness, price: e.target.value})}
+                      placeholder="5000"
+                    />
+                  </div>
+                  <Button onClick={handleCreateThickness} className="w-full">
+                    {language === 'uz' ? 'Qo\'shish' : 'Добавить'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
             {/* Banding Dialog */}
             <Dialog open={isBandingDialogOpen} onOpenChange={setIsBandingDialogOpen}>
+              
               <DialogTrigger asChild>
                 <Button className="flex items-center gap-2">
                   <PlusCircle className="h-5 w-5" />

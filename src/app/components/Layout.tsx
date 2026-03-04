@@ -17,9 +17,7 @@ import {
   Menu,
   X,
   ShoppingBag,
-  PackagePlus,
   UserPlus,
-  Wallet,
   PlusCircle,
   PackageCheck,
   BriefcaseBusiness
@@ -41,7 +39,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       name: t('dashboard'), 
       path: '/dashboard', 
       icon: LayoutDashboard,
-      roles: ['admin', 'manager']
+      roles: []
     },
     { 
       name: t('products'), 

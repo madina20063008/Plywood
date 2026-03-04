@@ -1858,135 +1858,149 @@ const fetchProducts = useCallback(async (filters?: ProductFilters) => {
     }
   };
   const fetchAcceptanceHistory = useCallback(async () => {
-    if (!user) return;
-    setIsFetchingAcceptanceHistory(true);
-    try {
-      const history = await acceptanceApi.getHistory();
-      setAcceptanceHistory(history || []);
-      const mappedArrivals: ProductArrival[] = (history || []).map((item) => ({
-        id: item.id.toString(),
-        apiId: item.id,
-        acceptanceId: item.acceptance,
-        productId: item.product.toString(),
-        productName: item.product_name,
-        category:
-          getCategoryNameFromProductId(item.product.toString()) || "OTHER",
-        quantity: item.count,
-        purchasePrice: parseFloat(item.arrival_price) || 0,
-        sellingPrice: parseFloat(item.sale_price) || 0,
-        priceType: item.price_type, // Add price type from API
-        exchangeRate: item.exchange_rate, // Add exchange rate from API
-        totalInvestment: (parseFloat(item.arrival_price) || 0) * item.count,
-        arrivalDate: item.arrival_date,
-        notes: item.description || "",
-        receivedBy: user?.full_name || "Unknown",
-        createdAt: item.created_at,
-      }));
-      setProductArrivals(mappedArrivals);
-    } catch (error) {
-      console.error("Failed to fetch acceptance history:", error);
-      toast.error(
-        language === "uz"
-          ? "Qabul qilish tarixini yuklashda xatolik yuz berdi"
-          : "Ошибка при загрузке истории приема",
-      );
-    } finally {
-      setIsFetchingAcceptanceHistory(false);
-    }
-  }, [user, language, products]);
+  if (!user) return;
+  setIsFetchingAcceptanceHistory(true);
+  try {
+    const history = await acceptanceApi.getHistory();
+    setAcceptanceHistory(history || []);
+    const mappedArrivals: ProductArrival[] = (history || []).map((item) => ({
+      id: item.id.toString(),
+      apiId: item.id,
+      acceptanceId: item.acceptance,
+      productId: item.product.toString(),
+      productName: item.product_name,
+      category:
+        getCategoryNameFromProductId(item.product.toString()) || "OTHER",
+      quantity: item.count,
+      purchasePrice: parseFloat(item.arrival_price) || 0,
+      sellingPrice: parseFloat(item.sale_price) || 0,
+      priceType: item.price_type,
+      exchangeRate: item.exchange_rate,
+      totalInvestment: (parseFloat(item.arrival_price) || 0) * item.count,
+      arrivalDate: item.arrival_date,
+      notes: item.description || "",
+      receivedBy: user?.full_name || "Unknown",
+      supplierId: item.supplier?.toString(), // Map supplier from API response
+      createdAt: item.created_at,
+    }));
+    setProductArrivals(mappedArrivals);
+  } catch (error) {
+    console.error("Failed to fetch acceptance history:", error);
+    toast.error(
+      language === "uz"
+        ? "Qabul qilish tarixini yuklashda xatolik yuz berdi"
+        : "Ошибка при загрузке истории приема",
+    );
+  } finally {
+    setIsFetchingAcceptanceHistory(false);
+  }
+}, [user, language, products]);
   const addProductArrival = async (
-    arrival: Omit<
-      ProductArrival,
-      "id" | "createdAt" | "apiId" | "acceptanceId"
-    >,
-  ) => {
-    if (!user) {
-      toast.error(
-        language === "uz"
-          ? "Avval tizimga kiring"
-          : "Сначала войдите в систему",
-      );
-      return;
+  arrival: Omit<
+    ProductArrival,
+    "id" | "createdAt" | "apiId" | "acceptanceId"
+  >,
+) => {
+  if (!user) {
+    toast.error(
+      language === "uz"
+        ? "Avval tizimga kiring"
+        : "Сначала войдите в систему",
+    );
+    return;
+  }
+  try {
+    console.log("🟢 addProductArrival called with:", {
+      productId: arrival.productId,
+      priceType: arrival.priceType,
+      purchasePrice: arrival.purchasePrice,
+      sellingPrice: arrival.sellingPrice,
+      supplierId: arrival.supplierId, // Log supplierId
+    });
+    
+    const product = products.find(
+      (p) => p.id.toString() === arrival.productId,
+    );
+    if (!product) {
+      throw new Error("Product not found");
     }
-    try {
-      console.log("🟢 addProductArrival called with:", {
-        productId: arrival.productId,
-        priceType: arrival.priceType,
-        purchasePrice: arrival.purchasePrice,
-        sellingPrice: arrival.sellingPrice,
-      });
-      const product = products.find(
-        (p) => p.id.toString() === arrival.productId,
-      );
-      if (!product) {
-        throw new Error("Product not found");
-      }
-      const quantity = Number(arrival.quantity);
-      const acceptanceData: any = {
-        product: product.id,
-        arrival_price: arrival.purchasePrice.toString(),
-        sale_price: arrival.sellingPrice.toString(),
-        count: quantity,
-        arrival_date: arrival.arrivalDate,
-        description: arrival.notes || "",
-        price_type: arrival.priceType, // BU 'dollar' YOKI 'sum' BO'LISHI KERAK
-      };
-      if (arrival.priceType === "dollar") {
-        acceptanceData.exchange_rate =
-          arrival.exchangeRate?.toString() || "12500"; // Default yoki formadan olingan
-      }
-      const newAcceptance = await acceptanceApi.create(acceptanceData);
-      const newArrival: ProductArrival = {
-        ...arrival,
-        id: newAcceptance.id.toString(),
-        apiId: newAcceptance.id,
-        acceptanceId: newAcceptance.id,
-        productName: product.name,
-        category: product.category,
-        receivedBy: user.full_name,
-        exchangeRate: newAcceptance.exchange_rate, // API dan kelgan exchange_rate ni saqlaymiz
-        totalInvestment: arrival.purchasePrice * arrival.quantity,
-        createdAt: new Date().toISOString(),
-      };
-      setProductArrivals((prev) => [newArrival, ...prev]);
-      setProducts((prevProducts) =>
-        prevProducts.map((p) =>
-          p.id.toString() === arrival.productId
-            ? {
-                ...p,
-                stockQuantity: p.stockQuantity + quantity,
-                ...(arrival.priceType === "dollar"
-                  ? {
-                      purchasePriceDollar: arrival.purchasePrice,
-                      unitPriceDollar: arrival.sellingPrice,
-                      lastPriceType: "dollar",
-                    }
-                  : {
-                      purchasePrice: arrival.purchasePrice,
-                      unitPrice: arrival.sellingPrice,
-                      lastPriceType: "sum",
-                    }),
-                arrival_date: arrival.arrivalDate,
-              }
-            : p,
-        ),
-      );
-      await fetchAcceptanceHistory();
-      toast.success(
-        language === "uz"
-          ? `${quantity} dona mahsulot qabul qilindi`
-          : `Принято ${quantity} единиц товара`,
-      );
-    } catch (error) {
-      console.error("❌ Failed to add product arrival:", error);
-      toast.error(
-        language === "uz"
-          ? "Mahsulot qabul qilishda xatolik yuz berdi"
-          : "Ошибка при приеме товара",
-      );
-      throw error;
+    
+    const quantity = Number(arrival.quantity);
+    const acceptanceData: any = {
+      product: product.id,
+      arrival_price: arrival.purchasePrice.toString(),
+      sale_price: arrival.sellingPrice.toString(),
+      count: quantity,
+      arrival_date: arrival.arrivalDate,
+      description: arrival.notes || "",
+      price_type: arrival.priceType,
+      // Add supplier if provided
+      ...(arrival.supplierId && { supplier: parseInt(arrival.supplierId) }),
+    };
+    
+    if (arrival.priceType === "dollar") {
+      acceptanceData.exchange_rate =
+        arrival.exchangeRate?.toString() || "12500";
     }
-  };
+    
+    console.log("📤 Sending to API:", acceptanceData);
+    
+    const newAcceptance = await acceptanceApi.create(acceptanceData);
+    
+    const newArrival: ProductArrival = {
+      ...arrival,
+      id: newAcceptance.id.toString(),
+      apiId: newAcceptance.id,
+      acceptanceId: newAcceptance.id,
+      productName: product.name,
+      category: product.category,
+      receivedBy: user.full_name,
+      exchangeRate: newAcceptance.exchange_rate,
+      totalInvestment: arrival.purchasePrice * arrival.quantity,
+      supplierId: arrival.supplierId, // Store supplierId
+      createdAt: new Date().toISOString(),
+    };
+    
+    setProductArrivals((prev) => [newArrival, ...prev]);
+    setProducts((prevProducts) =>
+      prevProducts.map((p) =>
+        p.id.toString() === arrival.productId
+          ? {
+              ...p,
+              stockQuantity: p.stockQuantity + quantity,
+              ...(arrival.priceType === "dollar"
+                ? {
+                    purchasePriceDollar: arrival.purchasePrice,
+                    unitPriceDollar: arrival.sellingPrice,
+                    lastPriceType: "dollar",
+                  }
+                : {
+                    purchasePrice: arrival.purchasePrice,
+                    unitPrice: arrival.sellingPrice,
+                    lastPriceType: "sum",
+                  }),
+              arrival_date: arrival.arrivalDate,
+            }
+          : p,
+      ),
+    );
+    
+    await fetchAcceptanceHistory();
+    toast.success(
+      language === "uz"
+        ? `${quantity} dona mahsulot qabul qilindi`
+        : `Принято ${quantity} единиц товара`,
+    );
+  } catch (error) {
+    console.error("❌ Failed to add product arrival:", error);
+    toast.error(
+      language === "uz"
+        ? "Mahsulot qabul qilishda xatolik yuz berdi"
+        : "Ошибка при приеме товара",
+    );
+    throw error;
+  }
+};
   const addCustomerTransaction = (
     transaction: Omit<CustomerTransaction, "id" | "createdAt">,
   ) => {
@@ -2344,7 +2358,6 @@ const fetchProducts = useCallback(async (filters?: ProductFilters) => {
     addCustomer,
     updateCustomer,
     deleteCustomer,
-    suppliers,
     isFetchingSuppliers,
     isAddingSupplier,
     isUpdatingSupplier,

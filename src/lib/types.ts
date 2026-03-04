@@ -146,7 +146,7 @@ export interface AnalyticsData {
   revenueByCategory: { category: string; revenue: number }[];
   serviceRevenue: { cutting: number; edgeBanding: number };
 }
-// types.ts - Update ProductArrival interface
+// In types.ts, update the ProductArrival interface
 export interface ProductArrival {
   id: string;
   apiId?: number;
@@ -157,12 +157,13 @@ export interface ProductArrival {
   quantity: number;
   purchasePrice: number;
   sellingPrice: number;
-  priceType?: 'dollar' | 'sum';  // Add this
-  exchangeRate?: string | null;   // Add this
+  priceType: "dollar" | "sum";
+  exchangeRate?: string | null;
   totalInvestment: number;
   arrivalDate: string;
   notes: string;
   receivedBy: string;
+  supplierId?: string;  // Add this
   createdAt: string;
 }
 
@@ -652,4 +653,15 @@ export interface DailyStats {
   product_sales: number;
   banding_income: number;
   cutting_income: number;
+}
+
+export interface FormData {
+  purchasePrice: number;
+  sellingPrice: number;
+  quantity: number;
+  arrivalDate: string;
+  notes: string;
+  priceType: "dollar" | "sum";
+  exchange_rate?: number;
+  supplierId?: string; // Add this
 }

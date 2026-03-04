@@ -36,6 +36,7 @@ import {
   Loader2,
   DollarSign,
   CreditCard,
+  Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -49,7 +50,8 @@ interface FormData {
   arrivalDate: string;
   notes: string;
   priceType: "dollar" | "sum";
-  exchange_rate?: number; // Optional exchange rate for dollar
+  exchange_rate?: number;
+  supplierId?: string; // Add supplier ID
 }
 
 export const ProductReceivingPage: React.FC = () => {
@@ -64,6 +66,9 @@ export const ProductReceivingPage: React.FC = () => {
     language,
     isAddingProduct,
     isFetchingProducts,
+    suppliers, // Add suppliers from context
+    fetchSuppliers, // Add fetchSuppliers function
+    isFetchingSuppliers,
   } = useApp();
 
   const navigate = useNavigate();
@@ -77,9 +82,17 @@ export const ProductReceivingPage: React.FC = () => {
     quantity: 0,
     arrivalDate: new Date().toISOString().split("T")[0],
     notes: "",
-    priceType: "sum", // Default to sum
-    exchange_rate: undefined, // No exchange rate by default
+    priceType: "sum",
+    exchange_rate: undefined,
+    supplierId: undefined, // Initialize supplier ID
   });
+
+  // Fetch suppliers on component mount
+  useEffect(() => {
+    if (user) {
+      fetchSuppliers();
+    }
+  }, [fetchSuppliers, user]);
 
   // Display prices with currency symbol based on price type
   const formatPrice = (price: number, type: "dollar" | "sum"): string => {
@@ -145,6 +158,7 @@ export const ProductReceivingPage: React.FC = () => {
       notes: "",
       priceType: "sum",
       exchange_rate: undefined,
+      supplierId: undefined,
     });
   };
 
@@ -152,7 +166,11 @@ export const ProductReceivingPage: React.FC = () => {
     setIsRefreshing(true);
     try {
       console.log("Refreshing data...");
-      await Promise.all([fetchAcceptanceHistory(), fetchProducts()]);
+      await Promise.all([
+        fetchAcceptanceHistory(),
+        fetchProducts(),
+        fetchSuppliers(),
+      ]);
       toast.success(
         language === "uz" ? "Ma'lumotlar yangilandi" : "Данные обновлены",
       );
@@ -208,6 +226,7 @@ export const ProductReceivingPage: React.FC = () => {
       console.log("Submitting with priceType:", formData.priceType);
       console.log("Purchase price:", formData.purchasePrice);
       console.log("Selling price:", formData.sellingPrice);
+      console.log("Supplier ID:", formData.supplierId);
 
       // Call API through context - send exactly what user entered
       await addProductArrival({
@@ -215,27 +234,14 @@ export const ProductReceivingPage: React.FC = () => {
         productName: selectedProduct.name,
         category: selectedProduct.category,
         quantity: quantity,
-        purchasePrice: formData.purchasePrice, // Send as is (10 for dollar, 10000 for sum)
-        sellingPrice: formData.sellingPrice, // Send as is (15 for dollar, 15000 for sum)
-        priceType: formData.priceType, // This will be 'dollar' or 'sum'
+        purchasePrice: formData.purchasePrice,
+        sellingPrice: formData.sellingPrice,
+        priceType: formData.priceType,
         totalInvestment: formData.purchasePrice * quantity,
         arrivalDate: formData.arrivalDate,
         notes: formData.notes,
         receivedBy: user?.full_name || "Unknown",
-      });
-
-      // Update product with new stock and prices
-      await updateProduct(selectedProductId, {
-        stockQuantity: selectedProduct.stockQuantity + quantity,
-        purchasePrice:
-          formData.priceType === "sum" ? formData.purchasePrice : 0,
-        unitPrice: formData.priceType === "sum" ? formData.sellingPrice : 0,
-        purchasePriceDollar:
-          formData.priceType === "dollar" ? formData.purchasePrice : 0,
-        unitPriceDollar:
-          formData.priceType === "dollar" ? formData.sellingPrice : 0,
-        arrival_date: formData.arrivalDate,
-        lastPriceType: formData.priceType, // Save last used price type
+        supplierId: formData.supplierId, // Include supplier ID
       });
 
       resetForm();
@@ -271,25 +277,19 @@ export const ProductReceivingPage: React.FC = () => {
 
       // Set prices based on last used price type
       if (priceType === "dollar" && product.purchasePriceDollar) {
-        setFormData({
+        setFormData((prev) => ({
+          ...prev,
           purchasePrice: product.purchasePriceDollar,
           sellingPrice: product.unitPriceDollar || 0,
-          quantity: 0,
-          arrivalDate: new Date().toISOString().split("T")[0],
-          notes: "",
           priceType: "dollar",
-          exchange_rate: undefined,
-        });
+        }));
       } else {
-        setFormData({
+        setFormData((prev) => ({
+          ...prev,
           purchasePrice: product.purchasePrice || 0,
           sellingPrice: product.unitPrice || 0,
-          quantity: 0,
-          arrivalDate: new Date().toISOString().split("T")[0],
-          notes: "",
           priceType: "sum",
-          exchange_rate: undefined,
-        });
+        }));
       }
 
       console.log("Form data updated:", {
@@ -306,15 +306,15 @@ export const ProductReceivingPage: React.FC = () => {
   );
 
   // Show loading state
-  if (isFetchingProducts) {
+  if (isFetchingProducts || isFetchingSuppliers) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
           <p className="text-gray-500 dark:text-gray-400">
             {language === "uz"
-              ? "Mahsulotlar yuklanmoqda..."
-              : "Загрузка продуктов..."}
+              ? "Ma'lumotlar yuklanmoqda..."
+              : "Загрузка данных..."}
           </p>
         </div>
       </div>
@@ -453,6 +453,72 @@ export const ProductReceivingPage: React.FC = () => {
                       : "Для приема товара сначала добавьте продукт."}
                   </p>
                 )}
+              </div>
+
+              {/* Supplier Selection - NEW */}
+              <div>
+                <Label htmlFor="supplier" className="flex items-center gap-2">
+                  <Truck className="h-4 w-4" />
+                  {language === "uz" ? "Yetkazib beruvchi" : "Поставщик"}
+                </Label>
+                <Select
+                  value={formData.supplierId || ""}
+                  onValueChange={(value) =>
+                    setFormData({ 
+                      ...formData, 
+                      supplierId: value === "no-supplier" ? undefined : value 
+                    })
+                  }
+                  disabled={!selectedProductId || isSubmitting}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        language === "uz"
+                          ? "Yetkazib beruvchini tanlang (ixtiyoriy)"
+                          : "Выберите поставщика (необязательно)"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="no-supplier">
+                      <span className="text-gray-500">
+                        {language === "uz" ? "Tanlanmagan" : "Не выбран"}
+                      </span>
+                    </SelectItem>
+                    {suppliers.length === 0 ? (
+                      <div className="p-2 text-center text-sm text-gray-500">
+                        {language === "uz"
+                          ? "Yetkazib beruvchilar mavjud emas"
+                          : "Нет поставщиков"}
+                      </div>
+                    ) : (
+                      suppliers.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{supplier.name}</span>
+                            {supplier.company && (
+                              <span className="text-xs text-gray-500">
+                                ({supplier.company})
+                              </span>
+                            )}
+                            {supplier.debt > 0 && (
+                              <Badge variant="destructive" className="text-xs">
+                                {language === "uz" ? "Qarz" : "Долг"}:{" "}
+                                {supplier.debt.toLocaleString()} UZS
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {language === "uz"
+                    ? "Yetkazib beruvchini tanlash ixtiyoriy"
+                    : "Выбор поставщика необязателен"}
+                </p>
               </div>
 
               {/* Price Type Selection */}
@@ -888,7 +954,7 @@ export const ProductReceivingPage: React.FC = () => {
         </Card>
       </div>
 
-      {/* Receiving History - Fixed version with proper currency display */}
+      {/* Receiving History - Add Supplier column */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -918,7 +984,7 @@ export const ProductReceivingPage: React.FC = () => {
                       {language === "uz" ? "Mahsulot" : "Продукт"}
                     </TableHead>
                     <TableHead>
-                      {language === "uz" ? "Kategoriya" : "Категория"}
+                      {language === "uz" ? "Yetkazib beruvchi" : "Поставщик"}
                     </TableHead>
                     <TableHead className="text-right">
                       {language === "uz" ? "Miqdor" : "Количество"}
@@ -951,6 +1017,11 @@ export const ProductReceivingPage: React.FC = () => {
                     // Parse prices from string to number
                     const purchasePrice = parsePrice(arrival.purchasePrice);
                     const sellingPrice = parsePrice(arrival.sellingPrice);
+                    
+                    // Find supplier name if supplierId exists
+                    const supplier = arrival.supplierId 
+                      ? suppliers.find(s => s.id === arrival.supplierId)
+                      : null;
 
                     return (
                       <TableRow key={arrival.id}>
@@ -958,7 +1029,16 @@ export const ProductReceivingPage: React.FC = () => {
                           {format(new Date(arrival.arrivalDate), "dd.MM.yyyy")}
                         </TableCell>
                         <TableCell>{arrival.productName}</TableCell>
-                        <TableCell>{t(arrival.category)}</TableCell>
+                        <TableCell>
+                          {supplier ? (
+                            <div className="flex items-center gap-1">
+                              <Truck className="h-3 w-3 text-gray-400" />
+                              <span className="text-sm">{supplier.name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
                           {arrival.quantity}{" "}
                           {language === "uz" ? "dona" : "шт."}
