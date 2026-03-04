@@ -799,7 +799,7 @@ export const Services: React.FC = () => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>{language === 'uz' ? 'Uzunlik (mm)' : 'Длина (мм)'}</Label>
+                    <Label>{language === 'uz' ? 'Uzunlik (m)' : 'Длина (м)'}</Label>
                     <Input
                       type="text"
                       value={newBanding.length}
@@ -843,7 +843,7 @@ export const Services: React.FC = () => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>{language === 'uz' ? 'Uzunlik (mm)' : 'Длина (мм)'}</Label>
+                      <Label>{language === 'uz' ? 'Uzunlik (m)' : 'Длина (м)'}</Label>
                       <Input
                         type="text"
                         value={editBanding.length}
@@ -867,7 +867,7 @@ export const Services: React.FC = () => {
                   <TableRow>
                     <TableHead>ID</TableHead>
                     <TableHead>{language === 'uz' ? 'Qalinlik' : 'Толщина'}</TableHead>
-                    <TableHead>{language === 'uz' ? 'Uzunlik (mm)' : 'Длина (мм)'}</TableHead>
+                    <TableHead>{language === 'uz' ? 'Uzunlik (m)' : 'Длина (м)'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Jami summa' : 'Общая сумма'}</TableHead>
                     <TableHead>{language === 'uz' ? 'Sana' : 'Дата'}</TableHead>
                     <TableHead className="text-right">{language === 'uz' ? 'Amallar' : 'Действия'}</TableHead>
