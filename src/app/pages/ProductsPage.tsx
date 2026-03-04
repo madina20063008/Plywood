@@ -506,10 +506,10 @@ export const ProductsPage: React.FC = () => {
                   return (
                     <Card
                       key={product.id}
-                      className="overflow-hidden hover:shadow-lg transition-shadow relative flex flex-col h-full"
+                      className="overflow-hidden hover:shadow-lg border-x-2 transition-shadow relative flex flex-col h-full"
                     >
                       {/* Image Container - fixed height for mobile */}
-                      <div className="h-[120px] sm:h-[140px] md:h-[150px] border-b-3 relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
+                      <div className="h-[120px] sm:h-[140px] md:h-[150px]  border-y-1 relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
                         {product.image ? (
                           <img
                             src={product.image}
