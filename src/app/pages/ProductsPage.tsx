@@ -509,7 +509,7 @@ export const ProductsPage: React.FC = () => {
                       className="overflow-hidden hover:shadow-lg transition-shadow relative flex flex-col h-full"
                     >
                       {/* Image Container - fixed height for mobile */}
-                      <div className="h-[120px] sm:h-[140px] md:h-[150px] relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
+                      <div className="h-[120px] sm:h-[140px] md:h-[150px] border-b-3 relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
                         {product.image ? (
                           <img
                             src={product.image}

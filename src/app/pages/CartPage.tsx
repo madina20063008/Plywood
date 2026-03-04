@@ -601,85 +601,111 @@ export const CartPage: React.FC = () => {
     paymentMethod === "nasiya" ? Math.max(0, total - amountPaid) : 0;
 
   // Handle quantity input change - allow empty string or valid numbers
-const handleQuantityInputChange = (itemId: string, value: string, maxStock: number) => {
-  // Allow empty string or valid numbers
-  if (value === '' || /^\d+$/.test(value)) {
-    // If it's a number, check if it exceeds max stock
-    if (value !== '' && parseInt(value) > maxStock) {
-      toast.error(language === 'uz' 
-        ? `Maksimal miqdor: ${maxStock}` 
-        : `Максимальное количество: ${maxStock}`);
+  const handleQuantityInputChange = (
+    itemId: string,
+    value: string,
+    maxStock: number,
+  ) => {
+    // Allow empty string or valid numbers
+    if (value === "" || /^\d+$/.test(value)) {
+      // If it's a number, check if it exceeds max stock
+      if (value !== "" && parseInt(value) > maxStock) {
+        toast.error(
+          language === "uz"
+            ? `Maksimal miqdor: ${maxStock}`
+            : `Максимальное количество: ${maxStock}`,
+        );
+        return;
+      }
+      setQuantityInputs((prev) => ({ ...prev, [itemId]: value }));
+    }
+  };
+
+  // Handle quantity input blur - update when user finishes typing
+  const handleQuantityInputBlur = async (item: CartItem) => {
+    const inputValue = quantityInputs[item.id];
+    const maxStock = item.product.stockQuantity || 999999;
+
+    // If input is empty, revert to current quantity
+    if (inputValue === "") {
+      setQuantityInputs((prev) => ({
+        ...prev,
+        [item.id]: item.quantity.toString(),
+      }));
       return;
     }
-    setQuantityInputs(prev => ({ ...prev, [itemId]: value }));
-  }
-};
 
-// Handle quantity input blur - update when user finishes typing
-const handleQuantityInputBlur = async (item: CartItem) => {
-  const inputValue = quantityInputs[item.id];
-  const maxStock = item.product.stockQuantity || 999999;
-  
-  // If input is empty, revert to current quantity
-  if (inputValue === '') {
-    setQuantityInputs(prev => ({ ...prev, [item.id]: item.quantity.toString() }));
-    return;
-  }
-  
-  // Parse the input value
-  const parsedValue = parseInt(inputValue);
-  
-  // Check if it's a valid number and greater than 0
-  if (isNaN(parsedValue) || parsedValue < 1) {
-    // Reset to current quantity if invalid
-    setQuantityInputs(prev => ({ ...prev, [item.id]: item.quantity.toString() }));
-    toast.error(language === 'uz' 
-      ? 'Miqdor 1 dan kichik bo\'lishi mumkin emas' 
-      : 'Количество не может быть меньше 1');
-    return;
-  }
+    // Parse the input value
+    const parsedValue = parseInt(inputValue);
 
-  // Check if it exceeds max stock
-  if (parsedValue > maxStock) {
-    setQuantityInputs(prev => ({ ...prev, [item.id]: item.quantity.toString() }));
-    toast.error(language === 'uz' 
-      ? `Maksimal miqdor: ${maxStock}` 
-      : `Максимальное количество: ${maxStock}`);
-    return;
-  }
+    // Check if it's a valid number and greater than 0
+    if (isNaN(parsedValue) || parsedValue < 1) {
+      // Reset to current quantity if invalid
+      setQuantityInputs((prev) => ({
+        ...prev,
+        [item.id]: item.quantity.toString(),
+      }));
+      toast.error(
+        language === "uz"
+          ? "Miqdor 1 dan kichik bo'lishi mumkin emas"
+          : "Количество не может быть меньше 1",
+      );
+      return;
+    }
 
-  const newQuantity = parsedValue;
-  
-  if (newQuantity !== item.quantity) {
-    await handleUpdateQuantity(item.id, newQuantity);
-  } else {
-    // If quantity hasn't changed, just update the input to show the current value
-    setQuantityInputs(prev => ({ ...prev, [item.id]: newQuantity.toString() }));
-  }
-};
+    // Check if it exceeds max stock
+    if (parsedValue > maxStock) {
+      setQuantityInputs((prev) => ({
+        ...prev,
+        [item.id]: item.quantity.toString(),
+      }));
+      toast.error(
+        language === "uz"
+          ? `Maksimal miqdor: ${maxStock}`
+          : `Максимальное количество: ${maxStock}`,
+      );
+      return;
+    }
 
-// Handle increment button click with stock validation
-const handleIncrementQuantity = async (item: CartItem) => {
-  const maxStock = item.product.stockQuantity || 999999;
-  if (item.quantity >= maxStock) {
-    toast.error(language === 'uz' 
-      ? `Maksimal miqdorga yetdingiz: ${maxStock}` 
-      : `Достигнуто максимальное количество: ${maxStock}`);
-    return;
-  }
-  await handleUpdateQuantity(item.id, item.quantity + 1);
-};
+    const newQuantity = parsedValue;
 
-// Handle decrement button click
-const handleDecrementQuantity = async (item: CartItem) => {
-  if (item.quantity <= 1) {
-    toast.error(language === 'uz' 
-      ? 'Miqdor 1 dan kichik bo\'lishi mumkin emas' 
-      : 'Количество не может быть меньше 1');
-    return;
-  }
-  await handleUpdateQuantity(item.id, item.quantity - 1);
-};
+    if (newQuantity !== item.quantity) {
+      await handleUpdateQuantity(item.id, newQuantity);
+    } else {
+      // If quantity hasn't changed, just update the input to show the current value
+      setQuantityInputs((prev) => ({
+        ...prev,
+        [item.id]: newQuantity.toString(),
+      }));
+    }
+  };
+
+  // Handle increment button click with stock validation
+  const handleIncrementQuantity = async (item: CartItem) => {
+    const maxStock = item.product.stockQuantity || 999999;
+    if (item.quantity >= maxStock) {
+      toast.error(
+        language === "uz"
+          ? `Maksimal miqdorga yetdingiz: ${maxStock}`
+          : `Достигнуто максимальное количество: ${maxStock}`,
+      );
+      return;
+    }
+    await handleUpdateQuantity(item.id, item.quantity + 1);
+  };
+
+  // Handle decrement button click
+  const handleDecrementQuantity = async (item: CartItem) => {
+    if (item.quantity <= 1) {
+      toast.error(
+        language === "uz"
+          ? "Miqdor 1 dan kichik bo'lishi mumkin emas"
+          : "Количество не может быть меньше 1",
+      );
+      return;
+    }
+    await handleUpdateQuantity(item.id, item.quantity - 1);
+  };
   // Handle key press events for better UX
   const handleQuantityKeyDown = async (
     e: React.KeyboardEvent<HTMLInputElement>,
@@ -1130,58 +1156,68 @@ const handleDecrementQuantity = async (item: CartItem) => {
                           </Button>
                         </div>
 
-                       <div className="flex flex-wrap items-center gap-4">
-  <div className="flex items-center gap-2">
-    <Label className="text-sm">{t('quantity')}:</Label>
-    <div className="flex items-center border rounded-lg">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-l-lg"
-        onClick={() => handleDecrementQuantity(item)}
-        disabled={item.quantity <= 1 || isUpdating}
-      >
-        <Minus className="h-3 w-3" />
-      </Button>
-      
-      {/* Manual quantity input with stock validation */}
-      <Input
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={quantityInput}
-        onChange={(e) => handleQuantityInputChange(
-          item.id, 
-          e.target.value, 
-          item.product.stockQuantity || 999999
-        )}
-        onBlur={() => handleQuantityInputBlur(item)}
-        onKeyDown={(e) => handleQuantityKeyDown(e, item)}
-        disabled={isUpdating}
-        className="w-16 h-8 text-center border-0 rounded-none"
-        placeholder={item.quantity.toString()}
-      />
-      
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8 rounded-r-lg"
-        onClick={() => handleIncrementQuantity(item)}
-        disabled={item.quantity >= (item.product.stockQuantity || 999999) || isUpdating}
-      >
-        <Plus className="h-3 w-3" />
-      </Button>
-    </div>
-    
-    {/* Show stock information */}
-    {item.product.stockQuantity && (
-      <span className="text-xs text-gray-500">
-        / {item.product.stockQuantity}
-      </span>
-    )}
-  </div>
-  <p className="font-semibold text-sm sm:text-base">{item.product.unitPrice.toLocaleString()} UZS</p>
-</div>
+                        <div className="flex flex-wrap items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <Label className="text-sm">{t("quantity")}:</Label>
+                            <div className="flex items-center border rounded-lg">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-l-lg"
+                                onClick={() => handleDecrementQuantity(item)}
+                                disabled={item.quantity <= 1 || isUpdating}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </Button>
+
+                              {/* Manual quantity input with stock validation */}
+                              <Input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={quantityInput}
+                                onChange={(e) =>
+                                  handleQuantityInputChange(
+                                    item.id,
+                                    e.target.value,
+                                    item.product.stockQuantity || 999999,
+                                  )
+                                }
+                                onBlur={() => handleQuantityInputBlur(item)}
+                                onKeyDown={(e) =>
+                                  handleQuantityKeyDown(e, item)
+                                }
+                                disabled={isUpdating}
+                                className="w-16 h-8 text-center border-0 rounded-none"
+                                placeholder={item.quantity.toString()}
+                              />
+
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 rounded-r-lg"
+                                onClick={() => handleIncrementQuantity(item)}
+                                disabled={
+                                  item.quantity >=
+                                    (item.product.stockQuantity || 999999) ||
+                                  isUpdating
+                                }
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
+
+                            {/* Show stock information */}
+                            {item.product.stockQuantity && (
+                              <span className="text-xs text-gray-500">
+                                / {item.product.stockQuantity}
+                              </span>
+                            )}
+                          </div>
+                          <p className="font-semibold text-sm sm:text-base">
+                            {item.product.unitPrice.toLocaleString()} UZS
+                          </p>
+                        </div>
 
                         <div className="flex flex-wrap gap-2">
                           {/* Cutting Service Dialog - Add */}
