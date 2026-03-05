@@ -25,7 +25,7 @@ export const LoginPage: React.FC = () => {
   try {
     const success = await login(username, password);
     console.log('Login success:', success);
-    console.log('Will navigate to /dashboard');
+    console.log('Will navigate to /products');
     console.log('Navigate function exists:', typeof navigate);
 
     if (success) {
@@ -35,7 +35,7 @@ export const LoginPage: React.FC = () => {
       console.log('Current path before navigation:', window.location.pathname);
       
       // Try navigation
-      navigate('/dashboard');
+      navigate('/products');
       console.log('Navigate function called');
       
       // Check immediately after
