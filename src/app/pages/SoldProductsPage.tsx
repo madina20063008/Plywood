@@ -125,8 +125,12 @@ export const SoldProductsPage: React.FC = () => {
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
 
   // States for accept/cancel
-  const [isAcceptingOrder, setIsAcceptingOrder] = useState<Record<number, boolean>>({});
-  const [isCancellingOrder, setIsCancellingOrder] = useState<Record<number, boolean>>({});
+  const [isAcceptingOrder, setIsAcceptingOrder] = useState<
+    Record<number, boolean>
+  >({});
+  const [isCancellingOrder, setIsCancellingOrder] = useState<
+    Record<number, boolean>
+  >({});
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelDescription, setCancelDescription] = useState("");
   const [orderToCancel, setOrderToCancel] = useState<number | null>(null);
@@ -140,23 +144,130 @@ export const SoldProductsPage: React.FC = () => {
   // Fetch orders on component mount
   useEffect(() => {
     fetchOrderStats();
-    fetchOrders();
   }, []);
+  useEffect(() => {
+    // Refresh orders when component mounts and when user changes
+    fetchOrders();
+  }, [user]);
 
-  // Filter orders based on selected date whenever orders or date changes
   useEffect(() => {
     if (orders.length > 0) {
-      const filtered = orders.filter((order) => {
+      // First filter by date
+      const dateFiltered = orders.filter((order) => {
         const orderDate = new Date(order.created_at)
           .toISOString()
           .split("T")[0];
         return orderDate === selectedDate;
       });
-      setFilteredOrders(filtered);
+
+      // Then filter by user role
+      let roleFiltered = dateFiltered;
+
+      if (user?.role === "salesperson") {
+        // For sellers: show orders they created (even if accepted/cancelled later)
+        roleFiltered = dateFiltered.filter((order) => {
+          // Check if order has history
+          if (order.history && order.history.length > 0) {
+            // Look for a create entry by this seller - check ALL history entries
+            const createdByThisSeller = order.history.some(
+              (h) => h.action === "create" && h.user_name === user.full_name,
+            );
+
+            return createdByThisSeller;
+          }
+
+          // If no history, check if the order's user matches the seller's ID
+          return order.user === parseInt(user.id);
+        });
+      }
+
+      // IMPORTANT: Do NOT modify the original order objects
+      // Just pass them through as-is
+      console.log(
+        "Filtered orders (original):",
+        roleFiltered.map((o) => ({
+          id: o.id,
+          history: o.history,
+        })),
+      );
+
+      setFilteredOrders(roleFiltered);
     } else {
       setFilteredOrders([]);
     }
-  }, [orders, selectedDate]);
+  }, [orders, selectedDate, user]);
+  // Create a separate function to get status for display
+  const getStatusForOrder = (order: ApiOrder) => {
+    if (!order.history || order.history.length === 0) {
+      return {
+        status: "new",
+        label: language === "uz" ? "Yangi" : "Новый",
+        color: "secondary",
+      };
+    }
+
+    // Sort history by created_at to get the most recent action first
+    const sortedHistory = [...order.history].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+    const latestAction = sortedHistory[0].action;
+
+    if (latestAction === "cancel") {
+      return {
+        status: "cancelled",
+        label: language === "uz" ? "Bekor qilingan" : "Отменен",
+        color: "destructive",
+      };
+    }
+
+    if (latestAction === "accept") {
+      return {
+        status: "accepted",
+        label: language === "uz" ? "Qabul qilingan" : "Принят",
+        color: "default",
+      };
+    }
+
+    // If latest action is create, check if there are any accept/cancel in history
+    const hasCancel = order.history.some((h) => h.action === "cancel");
+    if (hasCancel) {
+      return {
+        status: "cancelled",
+        label: language === "uz" ? "Bekor qilingan" : "Отменен",
+        color: "destructive",
+      };
+    }
+
+    const hasAccept = order.history.some((h) => h.action === "accept");
+    if (hasAccept) {
+      return {
+        status: "accepted",
+        label: language === "uz" ? "Qabul qilingan" : "Принят",
+        color: "default",
+      };
+    }
+
+    return {
+      status: "new",
+      label: language === "uz" ? "Yangi" : "Новый",
+      color: "secondary",
+    };
+  };
+  // Add this debug log to see what's happening
+  useEffect(() => {
+    if (filteredOrders.length > 0 && user?.role === "salesperson") {
+      console.log(
+        "Filtered orders for seller:",
+        filteredOrders.map((o) => ({
+          id: o.id,
+          history: o.history,
+          status: getOrderStatus(o),
+        })),
+      );
+    }
+  }, [filteredOrders, user]);
 
   const t = (key: string) => getTranslation(language, key as any);
 
@@ -340,82 +451,87 @@ export const SoldProductsPage: React.FC = () => {
     setIsEditOrderDialogOpen(true);
   };
 
-  // ==================== ACCEPT ORDER FUNCTION ====================
   const handleAcceptOrder = async (orderId: number) => {
     if (!user) {
       toast.error(
         language === "uz"
           ? "Avval tizimga kiring"
-          : "Сначала войдите в систему"
+          : "Сначала войдите в систему",
       );
       return;
     }
 
-    setIsAcceptingOrder(prev => ({ ...prev, [orderId]: true }));
+    setIsAcceptingOrder((prev) => ({ ...prev, [orderId]: true }));
     try {
       // Send POST request to accept endpoint
       const updatedOrder = await orderApi.accept(orderId);
-      
+
+      console.log("Order accepted response:", updatedOrder);
+
       // Refresh orders list to show updated history
       await fetchOrders();
       await fetchOrderStats();
-      
+
       toast.success(
         language === "uz"
           ? "Buyurtma muvaffaqiyatli qabul qilindi"
-          : "Заказ успешно принят"
+          : "Заказ успешно принят",
       );
     } catch (error: any) {
       console.error("Failed to accept order:", error);
       toast.error(
         language === "uz"
           ? `Buyurtmani qabul qilishda xatolik: ${error.message}`
-          : `Ошибка при принятии заказа: ${error.message}`
+          : `Ошибка при принятии заказа: ${error.message}`,
       );
     } finally {
-      setIsAcceptingOrder(prev => ({ ...prev, [orderId]: false }));
+      setIsAcceptingOrder((prev) => ({ ...prev, [orderId]: false }));
     }
   };
 
-  // ==================== CANCEL ORDER FUNCTION ====================
   const handleCancelOrder = async () => {
     if (!user || !orderToCancel) {
       toast.error(
         language === "uz"
           ? "Avval tizimga kiring"
-          : "Сначала войдите в систему"
+          : "Сначала войдите в систему",
       );
       return;
     }
 
-    setIsCancellingOrder(prev => ({ ...prev, [orderToCancel]: true }));
+    setIsCancellingOrder((prev) => ({ ...prev, [orderToCancel]: true }));
     try {
       // Send POST request to cancel endpoint with description
-      const updatedOrder = await orderApi.cancel(orderToCancel, cancelDescription);
-      
+      const updatedOrder = await orderApi.cancel(
+        orderToCancel,
+        cancelDescription,
+      );
+
+      console.log("Order cancelled response:", updatedOrder);
+
       // Refresh orders list to show updated history
       await fetchOrders();
       await fetchOrderStats();
-      
+
       // Close dialog and reset
       setCancelDialogOpen(false);
       setCancelDescription("");
       setOrderToCancel(null);
-      
+
       toast.success(
         language === "uz"
           ? "Buyurtma muvaffaqiyatli bekor qilindi"
-          : "Заказ успешно отменен"
+          : "Заказ успешно отменен",
       );
     } catch (error: any) {
       console.error("Failed to cancel order:", error);
       toast.error(
         language === "uz"
           ? `Buyurtmani bekor qilishda xatolik: ${error.message}`
-          : `Ошибка при отмене заказа: ${error.message}`
+          : `Ошибка при отмене заказа: ${error.message}`,
       );
     } finally {
-      setIsCancellingOrder(prev => ({ ...prev, [orderToCancel]: false }));
+      setIsCancellingOrder((prev) => ({ ...prev, [orderToCancel]: false }));
     }
   };
 
@@ -564,28 +680,70 @@ export const SoldProductsPage: React.FC = () => {
     );
   };
 
-  // Function to get order status based on history
   const getOrderStatus = (order: ApiOrder) => {
     if (!order.history || order.history.length === 0) {
-      return { status: "new", label: language === "uz" ? "Yangi" : "Новый", color: "secondary" };
+      return {
+        status: "new",
+        label: language === "uz" ? "Yangi" : "Новый",
+        color: "secondary",
+      };
     }
 
-    // Check if cancelled (check from most recent to oldest)
-    const hasCancel = order.history.some(h => h.action === "cancel");
+    // Sort history by created_at to get the most recent action first
+    const sortedHistory = [...order.history].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+    // Check the most recent action first
+    const latestAction = sortedHistory[0].action;
+
+    if (latestAction === "cancel") {
+      console.log(`Order ${order.id} is CANCELLED (latest action: cancel)`);
+      return {
+        status: "cancelled",
+        label: language === "uz" ? "Bekor qilingan" : "Отменен",
+        color: "destructive",
+      };
+    }
+
+    if (latestAction === "accept") {
+      console.log(`Order ${order.id} is ACCEPTED (latest action: accept)`);
+      return {
+        status: "accepted",
+        label: language === "uz" ? "Qabul qilingan" : "Принят",
+        color: "default",
+      };
+    }
+
+    // If latest action is create, check if there are any accept/cancel in history
+    const hasCancel = order.history.some((h) => h.action === "cancel");
     if (hasCancel) {
-      return { status: "cancelled", label: language === "uz" ? "Bekor qilingan" : "Отменен", color: "destructive" };
+      return {
+        status: "cancelled",
+        label: language === "uz" ? "Bekor qilingan" : "Отменен",
+        color: "destructive",
+      };
     }
 
-    // Check if accepted
-    const hasAccept = order.history.some(h => h.action === "accept");
+    const hasAccept = order.history.some((h) => h.action === "accept");
     if (hasAccept) {
-      return { status: "accepted", label: language === "uz" ? "Qabul qilingan" : "Принят", color: "default" };
+      return {
+        status: "accepted",
+        label: language === "uz" ? "Qabul qilingan" : "Принят",
+        color: "default",
+      };
     }
 
-    return { status: "new", label: language === "uz" ? "Yangi" : "Новый", color: "secondary" };
+    console.log(`Order ${order.id} is NEW`);
+    return {
+      status: "new",
+      label: language === "uz" ? "Yangi" : "Новый",
+      color: "secondary",
+    };
   };
 
-  // Function to render order history
+  // Function to render order history - Show all history entries
   const renderOrderHistory = (order: ApiOrder) => {
     if (!order.history || order.history.length === 0) {
       return (
@@ -597,7 +755,8 @@ export const SoldProductsPage: React.FC = () => {
 
     // Sort history by created_at (newest first)
     const sortedHistory = [...order.history].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
 
     return sortedHistory.map((h, index) => {
@@ -623,18 +782,20 @@ export const SoldProductsPage: React.FC = () => {
           break;
       }
 
-      // Check if this history entry should be visible to current user
-      const isVisible = user?.role === "manager" || h.visible_for === user?.role;
-      if (!isVisible) return null;
-
+      // Show all history entries for all users
       return (
-        <div key={index} className={`flex items-start gap-2 text-xs p-2 rounded-lg ${bgColor} mb-1`}>
+        <div
+          key={index}
+          className={`flex items-start gap-2 text-xs p-2 rounded-lg ${bgColor} mb-1`}
+        >
           <div className="mt-0.5">{actionIcon}</div>
           <div className="flex-1">
             <div className="flex items-center gap-1 flex-wrap">
               <span className="font-medium">{actionText}</span>
               <span className="text-gray-500">•</span>
-              <span className="text-gray-700 dark:text-gray-300">{h.user_name}</span>
+              <span className="text-gray-700 dark:text-gray-300">
+                {h.user_name}
+              </span>
             </div>
             <div className="text-gray-500 text-[10px]">
               {formatDateTime(h.created_at)}
@@ -880,6 +1041,8 @@ export const SoldProductsPage: React.FC = () => {
               : language === "uz"
                 ? "Barcha buyurtmalar ro'yxati"
                 : "Список всех заказов"}
+            {user?.role === "salesperson" &&
+              " (Faqat siz yaratgan buyurtmalar)"}
           </CardDescription>
         </CardHeader>
         <CardContent className="px-2 sm:px-4 pb-3 sm:pb-4">
@@ -915,6 +1078,7 @@ export const SoldProductsPage: React.FC = () => {
             </div>
           ) : (
             <div className="space-y-3 sm:space-y-4">
+            
               {filteredOrders.map((order) => {
                 const customerName = getCustomerDisplayName(order);
                 const isAnonymous =
@@ -922,18 +1086,21 @@ export const SoldProductsPage: React.FC = () => {
                   !customerName ||
                   customerName ===
                     (language === "uz" ? "Anonim mijoz" : "Анонимный клиент");
-                
-                const orderStatus = getOrderStatus(order);
-                
-                // Check if user can accept (only cashier and if order is new)
-                const canAccept = 
-                  user?.role === "cashier" && 
-                  orderStatus.status === "new";
-                
-                // Check if user can cancel (cashier or manager, and order is not cancelled)
-                const canCancel = 
-                  user?.role === "cashier" && 
-                  orderStatus.status !== "cancelled";
+
+                // Calculate status using the new function
+                const orderStatus = getStatusForOrder(order);
+
+                // Add debug log
+                console.log(
+                  `Rendering order ${order.id} with status:`,
+                  orderStatus,
+                );
+
+                // Add a debug log to verify the status for each order being rendered
+                console.log(
+                  `Rendering order ${order.id} with status:`,
+                  orderStatus,
+                );
 
                 return (
                   <Card
@@ -952,24 +1119,35 @@ export const SoldProductsPage: React.FC = () => {
                               #{order.id}
                             </Badge>
 
-                            {/* Status Badge */}
-                            <Badge 
+                            {/* Status Badge - Use orderStatus directly */}
+                            <Badge
                               variant={
-                                orderStatus.status === "accepted" ? "default" : 
-                                orderStatus.status === "cancelled" ? "destructive" : 
-                                "secondary"
+                                orderStatus.status === "accepted"
+                                  ? "default"
+                                  : orderStatus.status === "cancelled"
+                                    ? "destructive"
+                                    : "secondary"
                               }
                               className={
-                                orderStatus.status === "accepted" ? "bg-green-600" : ""
+                                orderStatus.status === "accepted"
+                                  ? "bg-green-600"
+                                  : orderStatus.status === "cancelled"
+                                    ? "bg-red-600"
+                                    : ""
                               }
                             >
-                              {orderStatus.status === "accepted" && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                              {orderStatus.status === "cancelled" && <XCircle className="h-3 w-3 mr-1" />}
-                              {orderStatus.status === "new" && <Clock className="h-3 w-3 mr-1" />}
+                              {orderStatus.status === "accepted" && (
+                                <CheckCircle2 className="h-3 w-3 mr-1" />
+                              )}
+                              {orderStatus.status === "cancelled" && (
+                                <XCircle className="h-3 w-3 mr-1" />
+                              )}
+                              {orderStatus.status === "new" && (
+                                <Clock className="h-3 w-3 mr-1" />
+                              )}
                               {orderStatus.label}
                             </Badge>
 
-                            {/* Customer Info */}
                             {isAnonymous ? (
                               <Badge
                                 variant="secondary"
@@ -1076,46 +1254,58 @@ export const SoldProductsPage: React.FC = () => {
 
                           <div className="flex gap-1 mt-2 sm:mt-0 self-end sm:self-center">
                             {/* Accept Button - Only for cashier and if order is new */}
-                            {canAccept && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 sm:h-8 sm:w-8 text-green-600 hover:text-green-700 hover:bg-green-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleAcceptOrder(order.id);
-                                }}
-                                disabled={isAcceptingOrder[order.id]}
-                                title={language === "uz" ? "Qabul qilish" : "Принять"}
-                              >
-                                {isAcceptingOrder[order.id] ? (
-                                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
-                                ) : (
-                                  <Check className="h-3 w-3 sm:h-4 sm:w-4" />
-                                )}
-                              </Button>
-                            )}
+                            {user?.role === "cashier" &&
+                              orderStatus.status === "new" && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 sm:h-8 sm:w-8 text-green-600 hover:text-green-700 hover:bg-green-100"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAcceptOrder(order.id);
+                                  }}
+                                  disabled={isAcceptingOrder[order.id]}
+                                  title={
+                                    language === "uz"
+                                      ? "Qabul qilish"
+                                      : "Принять"
+                                  }
+                                >
+                                  {isAcceptingOrder[order.id] ? (
+                                    <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                                  ) : (
+                                    <Check className="h-3 w-3 sm:h-4 sm:w-4" />
+                                  )}
+                                </Button>
+                              )}
 
-                            {/* Cancel Button - For cashier/manager if order not cancelled */}
-                            {canCancel && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 sm:h-8 sm:w-8 text-red-600 hover:text-red-700 hover:bg-red-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openCancelDialog(order.id);
-                                }}
-                                disabled={isCancellingOrder[order.id]}
-                                title={language === "uz" ? "Bekor qilish" : "Отменить"}
-                              >
-                                {isCancellingOrder[order.id] ? (
-                                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
-                                ) : (
-                                  <X className="h-3 w-3 sm:h-4 sm:w-4" />
-                                )}
-                              </Button>
-                            )}
+                            {/* Cancel Button - Available for both cashier and seller, but only if order is not cancelled */}
+                            {(user?.role === "cashier" ||
+                              user?.role === "salesperson") &&
+                              orderStatus.status !== "cancelled" &&
+                              orderStatus.status !== "accepted" && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 sm:h-8 sm:w-8 text-red-600 hover:text-red-700 hover:bg-red-100"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openCancelDialog(order.id);
+                                  }}
+                                  disabled={isCancellingOrder[order.id]}
+                                  title={
+                                    language === "uz"
+                                      ? "Bekor qilish"
+                                      : "Отменить"
+                                  }
+                                >
+                                  {isCancellingOrder[order.id] ? (
+                                    <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                                  ) : (
+                                    <X className="h-3 w-3 sm:h-4 sm:w-4" />
+                                  )}
+                                </Button>
+                              )}
 
                             <Button
                               variant="ghost"
@@ -1154,7 +1344,7 @@ export const SoldProductsPage: React.FC = () => {
                     {expandedOrderId === order.id && (
                       <div className="border-t border-gray-200 dark:border-gray-700 p-3 sm:p-4 bg-gray-50/50 dark:bg-gray-800/50">
                         <div className="space-y-3">
-                          {/* Order History Section */}
+                          {/* Order History Section - Shows all history entries */}
                           {order.history && order.history.length > 0 && (
                             <div className="bg-white dark:bg-gray-900 p-3 rounded-lg">
                               <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
@@ -1361,7 +1551,8 @@ export const SoldProductsPage: React.FC = () => {
         <DialogContent className="sm:max-w-[500px] w-[95vw]">
           <DialogHeader>
             <DialogTitle className="text-base sm:text-lg">
-              {language === "uz" ? "Buyurtmani bekor qilish" : "Отмена заказа"} #{orderToCancel}
+              {language === "uz" ? "Buyurtmani bekor qilish" : "Отмена заказа"}{" "}
+              #{orderToCancel}
             </DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
               {language === "uz"
@@ -1369,7 +1560,7 @@ export const SoldProductsPage: React.FC = () => {
                 : "Введите причину отмены (необязательно)"}
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="cancelDescription" className="text-xs sm:text-sm">
@@ -1404,7 +1595,9 @@ export const SoldProductsPage: React.FC = () => {
             <Button
               variant="destructive"
               onClick={handleCancelOrder}
-              disabled={orderToCancel ? isCancellingOrder[orderToCancel] : false}
+              disabled={
+                orderToCancel ? isCancellingOrder[orderToCancel] : false
+              }
               className="w-full sm:w-auto text-sm"
             >
               {orderToCancel && isCancellingOrder[orderToCancel] ? (
@@ -1412,8 +1605,10 @@ export const SoldProductsPage: React.FC = () => {
                   <Loader2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
                   {language === "uz" ? "Bekor qilinmoqda..." : "Отмена..."}
                 </>
+              ) : language === "uz" ? (
+                "Bekor qilish"
               ) : (
-                language === "uz" ? "Bekor qilish" : "Отменить"
+                "Отменить"
               )}
             </Button>
           </DialogFooter>
@@ -1686,7 +1881,7 @@ export const SoldProductsPage: React.FC = () => {
 
           {selectedOrder && (
             <div className="space-y-3 sm:space-y-4">
-              {/* Order History in Details Dialog */}
+              {/* Order History in Details Dialog - Shows all history */}
               {selectedOrder.history && selectedOrder.history.length > 0 && (
                 <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
                   <h3 className="text-sm font-medium mb-2 flex items-center gap-1">
