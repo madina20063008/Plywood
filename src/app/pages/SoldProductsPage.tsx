@@ -70,6 +70,8 @@ import {
   XCircle,
   RefreshCw,
   Filter,
+  Check,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { orderApi, customerApi } from "../../lib/api";
@@ -77,6 +79,7 @@ import { format } from "date-fns";
 
 export const SoldProductsPage: React.FC = () => {
   const {
+    user,
     sales,
     updateSale,
     language,
@@ -120,6 +123,13 @@ export const SoldProductsPage: React.FC = () => {
   >("cash");
   const [isLoading, setIsLoading] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+
+  // States for accept/cancel
+  const [isAcceptingOrder, setIsAcceptingOrder] = useState<Record<number, boolean>>({});
+  const [isCancellingOrder, setIsCancellingOrder] = useState<Record<number, boolean>>({});
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelDescription, setCancelDescription] = useState("");
+  const [orderToCancel, setOrderToCancel] = useState<number | null>(null);
 
   // Single date filter state
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -330,6 +340,92 @@ export const SoldProductsPage: React.FC = () => {
     setIsEditOrderDialogOpen(true);
   };
 
+  // ==================== ACCEPT ORDER FUNCTION ====================
+  const handleAcceptOrder = async (orderId: number) => {
+    if (!user) {
+      toast.error(
+        language === "uz"
+          ? "Avval tizimga kiring"
+          : "Сначала войдите в систему"
+      );
+      return;
+    }
+
+    setIsAcceptingOrder(prev => ({ ...prev, [orderId]: true }));
+    try {
+      // Send POST request to accept endpoint
+      const updatedOrder = await orderApi.accept(orderId);
+      
+      // Refresh orders list to show updated history
+      await fetchOrders();
+      await fetchOrderStats();
+      
+      toast.success(
+        language === "uz"
+          ? "Buyurtma muvaffaqiyatli qabul qilindi"
+          : "Заказ успешно принят"
+      );
+    } catch (error: any) {
+      console.error("Failed to accept order:", error);
+      toast.error(
+        language === "uz"
+          ? `Buyurtmani qabul qilishda xatolik: ${error.message}`
+          : `Ошибка при принятии заказа: ${error.message}`
+      );
+    } finally {
+      setIsAcceptingOrder(prev => ({ ...prev, [orderId]: false }));
+    }
+  };
+
+  // ==================== CANCEL ORDER FUNCTION ====================
+  const handleCancelOrder = async () => {
+    if (!user || !orderToCancel) {
+      toast.error(
+        language === "uz"
+          ? "Avval tizimga kiring"
+          : "Сначала войдите в систему"
+      );
+      return;
+    }
+
+    setIsCancellingOrder(prev => ({ ...prev, [orderToCancel]: true }));
+    try {
+      // Send POST request to cancel endpoint with description
+      const updatedOrder = await orderApi.cancel(orderToCancel, cancelDescription);
+      
+      // Refresh orders list to show updated history
+      await fetchOrders();
+      await fetchOrderStats();
+      
+      // Close dialog and reset
+      setCancelDialogOpen(false);
+      setCancelDescription("");
+      setOrderToCancel(null);
+      
+      toast.success(
+        language === "uz"
+          ? "Buyurtma muvaffaqiyatli bekor qilindi"
+          : "Заказ успешно отменен"
+      );
+    } catch (error: any) {
+      console.error("Failed to cancel order:", error);
+      toast.error(
+        language === "uz"
+          ? `Buyurtmani bekor qilishda xatolik: ${error.message}`
+          : `Ошибка при отмене заказа: ${error.message}`
+      );
+    } finally {
+      setIsCancellingOrder(prev => ({ ...prev, [orderToCancel]: false }));
+    }
+  };
+
+  // Open cancel dialog
+  const openCancelDialog = (orderId: number) => {
+    setOrderToCancel(orderId);
+    setCancelDescription("");
+    setCancelDialogOpen(true);
+  };
+
   const handleUpdateOrder = async () => {
     if (!selectedOrder) return;
 
@@ -468,6 +564,92 @@ export const SoldProductsPage: React.FC = () => {
     );
   };
 
+  // Function to get order status based on history
+  const getOrderStatus = (order: ApiOrder) => {
+    if (!order.history || order.history.length === 0) {
+      return { status: "new", label: language === "uz" ? "Yangi" : "Новый", color: "secondary" };
+    }
+
+    // Check if cancelled (check from most recent to oldest)
+    const hasCancel = order.history.some(h => h.action === "cancel");
+    if (hasCancel) {
+      return { status: "cancelled", label: language === "uz" ? "Bekor qilingan" : "Отменен", color: "destructive" };
+    }
+
+    // Check if accepted
+    const hasAccept = order.history.some(h => h.action === "accept");
+    if (hasAccept) {
+      return { status: "accepted", label: language === "uz" ? "Qabul qilingan" : "Принят", color: "default" };
+    }
+
+    return { status: "new", label: language === "uz" ? "Yangi" : "Новый", color: "secondary" };
+  };
+
+  // Function to render order history
+  const renderOrderHistory = (order: ApiOrder) => {
+    if (!order.history || order.history.length === 0) {
+      return (
+        <div className="text-xs text-gray-500 italic">
+          {language === "uz" ? "Tarix yo'q" : "Нет истории"}
+        </div>
+      );
+    }
+
+    // Sort history by created_at (newest first)
+    const sortedHistory = [...order.history].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    return sortedHistory.map((h, index) => {
+      let actionText = "";
+      let actionIcon = null;
+      let bgColor = "";
+
+      switch (h.action) {
+        case "create":
+          actionIcon = <FileText className="h-3 w-3 text-blue-500" />;
+          actionText = language === "uz" ? "Yaratildi" : "Создан";
+          bgColor = "bg-blue-50 dark:bg-blue-900/20";
+          break;
+        case "accept":
+          actionIcon = <CheckCircle2 className="h-3 w-3 text-green-500" />;
+          actionText = language === "uz" ? "Qabul qilindi" : "Принят";
+          bgColor = "bg-green-50 dark:bg-green-900/20";
+          break;
+        case "cancel":
+          actionIcon = <XCircle className="h-3 w-3 text-red-500" />;
+          actionText = language === "uz" ? "Bekor qilindi" : "Отменен";
+          bgColor = "bg-red-50 dark:bg-red-900/20";
+          break;
+      }
+
+      // Check if this history entry should be visible to current user
+      const isVisible = user?.role === "manager" || h.visible_for === user?.role;
+      if (!isVisible) return null;
+
+      return (
+        <div key={index} className={`flex items-start gap-2 text-xs p-2 rounded-lg ${bgColor} mb-1`}>
+          <div className="mt-0.5">{actionIcon}</div>
+          <div className="flex-1">
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="font-medium">{actionText}</span>
+              <span className="text-gray-500">•</span>
+              <span className="text-gray-700 dark:text-gray-300">{h.user_name}</span>
+            </div>
+            <div className="text-gray-500 text-[10px]">
+              {formatDateTime(h.created_at)}
+            </div>
+            {h.description && (
+              <div className="text-gray-600 dark:text-gray-400 mt-0.5 text-[10px] italic border-l-2 border-gray-300 pl-1">
+                "{h.description}"
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    });
+  };
+
   // Function to get customer display name
   const getCustomerDisplayName = (order: ApiOrder): string => {
     // First check if we have customer_fullname (from your API response)
@@ -539,7 +721,7 @@ export const SoldProductsPage: React.FC = () => {
     );
   };
 
-  // Function to render cutting service details - FIXED for the correct structure
+  // Function to render cutting service details
   const renderCuttingDetails = (cutting: any) => {
     if (!cutting) return null;
 
@@ -577,7 +759,7 @@ export const SoldProductsPage: React.FC = () => {
     );
   };
 
-  // Function to render banding service details - FIXED for the correct structure
+  // Function to render banding service details
   const renderBandingDetails = (banding: any) => {
     if (!banding) return null;
 
@@ -661,7 +843,7 @@ export const SoldProductsPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Single Date Filter - Replaces Refresh Button */}
+        {/* Single Date Filter */}
         <div className="flex items-center gap-2 bg-white dark:bg-gray-800 p-2 rounded-lg shadow-sm border dark:border-gray-700">
           <Filter className="h-4 w-4 text-gray-500 dark:text-gray-400 flex-shrink-0" />
           <div className="flex items-center gap-1">
@@ -740,6 +922,18 @@ export const SoldProductsPage: React.FC = () => {
                   !customerName ||
                   customerName ===
                     (language === "uz" ? "Anonim mijoz" : "Анонимный клиент");
+                
+                const orderStatus = getOrderStatus(order);
+                
+                // Check if user can accept (only cashier and if order is new)
+                const canAccept = 
+                  user?.role === "cashier" && 
+                  orderStatus.status === "new";
+                
+                // Check if user can cancel (cashier or manager, and order is not cancelled)
+                const canCancel = 
+                  user?.role === "cashier" && 
+                  orderStatus.status !== "cancelled";
 
                 return (
                   <Card
@@ -756,6 +950,23 @@ export const SoldProductsPage: React.FC = () => {
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge variant="outline" className="text-xs">
                               #{order.id}
+                            </Badge>
+
+                            {/* Status Badge */}
+                            <Badge 
+                              variant={
+                                orderStatus.status === "accepted" ? "default" : 
+                                orderStatus.status === "cancelled" ? "destructive" : 
+                                "secondary"
+                              }
+                              className={
+                                orderStatus.status === "accepted" ? "bg-green-600" : ""
+                              }
+                            >
+                              {orderStatus.status === "accepted" && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                              {orderStatus.status === "cancelled" && <XCircle className="h-3 w-3 mr-1" />}
+                              {orderStatus.status === "new" && <Clock className="h-3 w-3 mr-1" />}
+                              {orderStatus.label}
                             </Badge>
 
                             {/* Customer Info */}
@@ -864,6 +1075,48 @@ export const SoldProductsPage: React.FC = () => {
                           </div>
 
                           <div className="flex gap-1 mt-2 sm:mt-0 self-end sm:self-center">
+                            {/* Accept Button - Only for cashier and if order is new */}
+                            {canAccept && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 sm:h-8 sm:w-8 text-green-600 hover:text-green-700 hover:bg-green-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAcceptOrder(order.id);
+                                }}
+                                disabled={isAcceptingOrder[order.id]}
+                                title={language === "uz" ? "Qabul qilish" : "Принять"}
+                              >
+                                {isAcceptingOrder[order.id] ? (
+                                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                                ) : (
+                                  <Check className="h-3 w-3 sm:h-4 sm:w-4" />
+                                )}
+                              </Button>
+                            )}
+
+                            {/* Cancel Button - For cashier/manager if order not cancelled */}
+                            {canCancel && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 sm:h-8 sm:w-8 text-red-600 hover:text-red-700 hover:bg-red-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openCancelDialog(order.id);
+                                }}
+                                disabled={isCancellingOrder[order.id]}
+                                title={language === "uz" ? "Bekor qilish" : "Отменить"}
+                              >
+                                {isCancellingOrder[order.id] ? (
+                                  <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                                ) : (
+                                  <X className="h-3 w-3 sm:h-4 sm:w-4" />
+                                )}
+                              </Button>
+                            )}
+
                             <Button
                               variant="ghost"
                               size="icon"
@@ -901,6 +1154,21 @@ export const SoldProductsPage: React.FC = () => {
                     {expandedOrderId === order.id && (
                       <div className="border-t border-gray-200 dark:border-gray-700 p-3 sm:p-4 bg-gray-50/50 dark:bg-gray-800/50">
                         <div className="space-y-3">
+                          {/* Order History Section */}
+                          {order.history && order.history.length > 0 && (
+                            <div className="bg-white dark:bg-gray-900 p-3 rounded-lg">
+                              <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                                <History className="h-3 w-3" />
+                                {language === "uz"
+                                  ? "Buyurtma tarixi"
+                                  : "История заказа"}
+                              </h4>
+                              <div className="space-y-1">
+                                {renderOrderHistory(order)}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Customer Details (if not anonymous and has customer data) */}
                           {!isAnonymous && (
                             <div className="bg-white dark:bg-gray-900 p-3 rounded-lg">
@@ -952,7 +1220,7 @@ export const SoldProductsPage: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Services Section - FIXED: Show cutting and banding at order level */}
+                          {/* Services Section */}
                           {(order.cutting || order.banding) && (
                             <div>
                               <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
@@ -1087,6 +1355,70 @@ export const SoldProductsPage: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Cancel Order Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent className="sm:max-w-[500px] w-[95vw]">
+          <DialogHeader>
+            <DialogTitle className="text-base sm:text-lg">
+              {language === "uz" ? "Buyurtmani bekor qilish" : "Отмена заказа"} #{orderToCancel}
+            </DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
+              {language === "uz"
+                ? "Bekor qilish sababini kiriting (ixtiyoriy)"
+                : "Введите причину отмены (необязательно)"}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="cancelDescription" className="text-xs sm:text-sm">
+                {language === "uz" ? "Sabab" : "Причина"}
+              </Label>
+              <Input
+                id="cancelDescription"
+                value={cancelDescription}
+                onChange={(e) => setCancelDescription(e.target.value)}
+                placeholder={
+                  language === "uz"
+                    ? "Bekor qilish sababi..."
+                    : "Причина отмены..."
+                }
+                className="text-sm"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCancelDialogOpen(false);
+                setCancelDescription("");
+                setOrderToCancel(null);
+              }}
+              className="w-full sm:w-auto text-sm"
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelOrder}
+              disabled={orderToCancel ? isCancellingOrder[orderToCancel] : false}
+              className="w-full sm:w-auto text-sm"
+            >
+              {orderToCancel && isCancellingOrder[orderToCancel] ? (
+                <>
+                  <Loader2 className="mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin" />
+                  {language === "uz" ? "Bekor qilinmoqda..." : "Отмена..."}
+                </>
+              ) : (
+                language === "uz" ? "Bekor qilish" : "Отменить"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Sale Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -1354,6 +1686,19 @@ export const SoldProductsPage: React.FC = () => {
 
           {selectedOrder && (
             <div className="space-y-3 sm:space-y-4">
+              {/* Order History in Details Dialog */}
+              {selectedOrder.history && selectedOrder.history.length > 0 && (
+                <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                  <h3 className="text-sm font-medium mb-2 flex items-center gap-1">
+                    <History className="h-4 w-4" />
+                    {language === "uz" ? "Buyurtma tarixi" : "История заказа"}
+                  </h3>
+                  <div className="space-y-1">
+                    {renderOrderHistory(selectedOrder)}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <p className="text-xs text-gray-500">

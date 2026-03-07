@@ -1,5 +1,5 @@
 // User roles
-export type UserRole = 'salesperson' | 'admin' | 'manager';
+export type UserRole = 'salesperson' | 'cashier' | 'manager' | 'warehouseman';
 
 // Language types
 export type Language = 'uz' | 'ru';
@@ -220,7 +220,7 @@ export interface ApiUser {
   full_name: string;
   username: string;
   phone_number: string;
-  role: 's' | 'a' | 'm'; // s = salesperson, a = admin, m = manager
+  role: 's' | 'c' | 'm' | 'w'; // s = salesperson, a = admin, m = manager
 }
 
 export interface CreateUserData {
@@ -228,7 +228,7 @@ export interface CreateUserData {
   username: string;
   phone_number: string;
   password: string;
-  role: 's' | 'a' | 'm';
+  role: 's' | 'c' | 'm' | 'w';
 }
 
 export type UpdateUserData = Partial<CreateUserData>;
@@ -416,6 +416,17 @@ export interface ApiOrder {
   is_anonymous: string;
   customer: any;
   customer_fullname: string;
+  history?: OrderHistory[];
+}
+
+export interface OrderHistory {
+  id: number;
+  user: number;
+  user_name: string;
+  action: 'create' | 'accept' | 'cancel';
+  visible_for: 'seller' | 'cashier';
+  description: string;
+  created_at: string;
 }
 
 export interface CreateOrderData {

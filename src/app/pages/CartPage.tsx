@@ -85,6 +85,9 @@ export const CartPage: React.FC = () => {
     isCreatingOrder,
   } = useApp();
 
+  // Check if user is salesperson
+  const isSalesperson = user?.role === 'salesperson';
+
   const [selectedItem, setSelectedItem] = useState<CartItem | null>(null);
   const [isCuttingDialogOpen, setIsCuttingDialogOpen] = useState(false);
   const [isEdgeBandingDialogOpen, setIsEdgeBandingDialogOpen] = useState(false);
@@ -706,6 +709,7 @@ export const CartPage: React.FC = () => {
     }
     await handleUpdateQuantity(item.id, item.quantity - 1);
   };
+
   // Handle key press events for better UX
   const handleQuantityKeyDown = async (
     e: React.KeyboardEvent<HTMLInputElement>,
@@ -1237,17 +1241,6 @@ export const CartPage: React.FC = () => {
                               }
                             }}
                           >
-                            {/* <DialogTrigger asChild>
-                              <Button variant="outline" size="sm" disabled={isRemoving || isAdding || item.cuttingService} className="text-xs sm:text-sm">
-                                <Scissors className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                                <span className="truncate max-w-[80px] sm:max-w-none">
-                                  {item.cuttingService ? (
-                                    language === 'uz' ? 'Kesish mavjud' : 'Распил есть'
-                                  ) : (
-                                    t('addCutting')
-                                  )}
-                                </span>
-                              </Button>
                             {/* Dialog content remains the same */}
                           </Dialog>
 
@@ -1270,18 +1263,7 @@ export const CartPage: React.FC = () => {
                               }
                             }}
                           >
-                            {/* <DialogTrigger asChild>
-                              <Button variant="outline" size="sm" disabled={isRemoving || isAdding || item.edgeBandingService} className="text-xs sm:text-sm">
-                                <Ruler className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                                <span className="truncate max-w-[80px] sm:max-w-none">
-                                  {item.edgeBandingService ? (
-                                    language === 'uz' ? 'Kromka mavjud' : 'Кромка есть'
-                                  ) : (
-                                    t('addEdgeBanding')
-                                  )}
-                                </span>
-                              </Button>
-                            </DialogTrigger> */}
+                            {/* Dialog content remains the same */}
                           </Dialog>
                         </div>
 
@@ -1724,70 +1706,75 @@ export const CartPage: React.FC = () => {
                     </span>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                    <Label className="text-sm flex-shrink-0">
-                      {t("discountType")}:
-                    </Label>
-                    <Select
-                      value={discountType}
-                      onValueChange={(value: "p" | "c") =>
-                        setDiscountType(value)
-                      }
-                    >
-                      <SelectTrigger className="w-full sm:w-auto">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="c">
-                          {language === "uz" ? "UZS" : "UZS"}
-                        </SelectItem>
-                        <SelectItem value="p">%</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Discount section - only show if user is NOT salesperson */}
+                  {!isSalesperson && (
+                    <>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                        <Label className="text-sm flex-shrink-0">
+                          {t("discountType")}:
+                        </Label>
+                        <Select
+                          value={discountType}
+                          onValueChange={(value: "p" | "c") =>
+                            setDiscountType(value)
+                          }
+                        >
+                          <SelectTrigger className="w-full sm:w-auto">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="c">
+                              {language === "uz" ? "UZS" : "UZS"}
+                            </SelectItem>
+                            <SelectItem value="p">%</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <Label className="text-sm flex-shrink-0">
-                      {t("discount")}:
-                    </Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={discountType === "p" ? 100 : subtotal}
-                      value={discountInput}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === "" || val === "-" || val === "0") {
-                          setDiscountInput("");
-                        } else {
-                          const parsed = parseFloat(val);
-                          if (!isNaN(parsed)) {
-                            setDiscountInput(val);
-                          }
-                        }
-                      }}
-                      onBlur={() => {
-                        if (discountType === "p") {
-                          if (discount > 100) {
-                            setDiscount(100);
-                            setDiscountInput("100");
-                          }
-                        } else {
-                          if (discount > subtotal) {
-                            setDiscount(subtotal);
-                            setDiscountInput(subtotal.toString());
-                          }
-                        }
-                      }}
-                      className="w-full text-sm"
-                    />
-                  </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <Label className="text-sm flex-shrink-0">
+                          {t("discount")}:
+                        </Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max={discountType === "p" ? 100 : subtotal}
+                          value={discountInput}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "" || val === "-" || val === "0") {
+                              setDiscountInput("");
+                            } else {
+                              const parsed = parseFloat(val);
+                              if (!isNaN(parsed)) {
+                                setDiscountInput(val);
+                              }
+                            }
+                          }}
+                          onBlur={() => {
+                            if (discountType === "p") {
+                              if (discount > 100) {
+                                setDiscount(100);
+                                setDiscountInput("100");
+                              }
+                            } else {
+                              if (discount > subtotal) {
+                                setDiscount(subtotal);
+                                setDiscountInput(subtotal.toString());
+                              }
+                            }
+                          }}
+                          className="w-full text-sm"
+                        />
+                      </div>
 
-                  {discount > 0 && (
-                    <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 text-right">
-                      {language === "uz" ? "Chegirma" : "Скидка"}: -
-                      {discountAmount.toLocaleString()} UZS
-                    </div>
+                      {discount > 0 && (
+                        <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 text-right">
+                          {language === "uz" ? "Chegirma" : "Скидка"}: -
+                          {discountAmount.toLocaleString()} UZS
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -1818,14 +1805,18 @@ export const CartPage: React.FC = () => {
                       <SelectItem value="mixed" className="text-sm">
                         {t("mixed")}
                       </SelectItem>
-                      <SelectItem value="nasiya" className="text-sm">
-                        {t("credit")}
-                      </SelectItem>
+                      {/* Nasiya option - only show if user is NOT salesperson */}
+                      {!isSalesperson && (
+                        <SelectItem value="nasiya" className="text-sm">
+                          {t("credit")}
+                        </SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
 
-                {paymentMethod === "nasiya" && (
+                {/* Nasiya payment details - only show if user is NOT salesperson and payment method is nasiya */}
+                {!isSalesperson && paymentMethod === "nasiya" && (
                   <div className="space-y-2">
                     <Label className="text-sm">
                       {language === "uz"
@@ -1983,7 +1974,9 @@ export const CartPage: React.FC = () => {
                             {subtotal.toLocaleString()} UZS
                           </span>
                         </div>
-                        {discount > 0 && (
+                        
+                        {/* Discount in confirmation - only show if not salesperson */}
+                        {!isSalesperson && discount > 0 && (
                           <div className="flex justify-between text-sm">
                             <span className="text-gray-500">
                               {t("discount")}
@@ -1993,6 +1986,7 @@ export const CartPage: React.FC = () => {
                             </span>
                           </div>
                         )}
+                        
                         <div className="flex justify-between font-semibold">
                           <span>{t("total")}</span>
                           <span className="text-base sm:text-lg text-blue-600 break-all">
@@ -2000,7 +1994,8 @@ export const CartPage: React.FC = () => {
                           </span>
                         </div>
 
-                        {paymentMethod === "nasiya" && (
+                        {/* Nasiya payment details in confirmation - only show if not salesperson */}
+                        {!isSalesperson && paymentMethod === "nasiya" && (
                           <>
                             <div className="flex justify-between text-sm pt-2">
                               <span className="text-gray-500">

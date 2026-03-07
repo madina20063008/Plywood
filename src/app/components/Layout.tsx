@@ -45,56 +45,56 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       name: t('products'), 
       path: '/products', 
       icon: Package,
-      roles: ['salesperson', 'admin', 'manager']
+      roles: ['salesperson', 'warehouseman', 'manager', 'cashier']
     },
     { 
       name: t('services'), 
       path: '/services', 
       icon: BriefcaseBusiness,
-      roles: ['salesperson', 'admin', 'manager']
+      roles: ['salesperson', 'warehouseman', 'manager', 'cashier']
     },
     { 
       name: t('cart'), 
       path: '/cart', 
       icon: ShoppingCart,
-      roles: ['salesperson'],
+      roles: ['salesperson', 'warehouseman'],
       badge: cart.length
     },
     { 
       name: t('soldProducts'), 
       path: '/sold-products', 
       icon: ShoppingBag,
-      roles: ['salesperson', 'admin', 'manager']
+      roles: ['salesperson', 'warehouseman', 'manager', 'cashier']
     },
     { 
       name: language === 'uz' ? 'Mahsulot yaratish' : 'Создать продукт', 
       path: '/product-creation', 
       icon: PlusCircle,
-      roles: ['admin', 'manager']
+      roles: ['warehouseman', 'manager']
     },
     { 
       name: language === 'uz' ? 'Mahsulot qabul qilish' : 'Приём товара', 
       path: '/product-receiving', 
       icon: PackageCheck,
-      roles: ['admin', 'manager']
+      roles: ['warehouseman', 'manager']
     },
     { 
       name: t('inventory'), 
       path: '/inventory', 
       icon: Package,
-      roles: ['admin', 'manager']
+      roles: ['warehouseman', 'manager']
     },
     { 
       name: t('users'), 
       path: '/users', 
       icon: Users,
-      roles: ['admin', 'manager']
+      roles: ['warehouseman', 'manager']
     },
     { 
       name: t('customers'), 
       path: '/customers', 
       icon: UserPlus,
-      roles: ['admin', 'manager']
+      roles: ['warehouseman', 'manager']
     },
     // { 
     //   name: t('customerLedger'), 
@@ -106,7 +106,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       name: t('supplier'), 
       path: '/supplier', 
       icon: Users,
-      roles: ['admin', 'manager']
+      roles: ['warehouseman', 'manager']
     },
     { 
       name: t('reports'), 

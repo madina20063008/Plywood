@@ -136,7 +136,8 @@ export const UsersPage: React.FC = () => {
   const getRoleBadgeVariant = (role: UserRole) => {
     switch (role) {
       case 'manager': return 'default';
-      case 'admin': return 'secondary';
+      case 'warehouseman': return 'secondary';
+      case 'cashier': return 'secondary';
       case 'salesperson': return 'outline';
     }
   };
@@ -144,23 +145,26 @@ export const UsersPage: React.FC = () => {
   const getRoleName = (role: UserRole) => {
     switch (role) {
       case 'salesperson': return language === 'uz' ? 'Sotuvchi' : 'Продавец';
-      case 'admin': return language === 'uz' ? 'Admin' : 'Админ';
+      case 'cashier': return language === 'uz' ? 'Kassir' : 'Касса';
       case 'manager': return language === 'uz' ? 'Menejer' : 'Менеджер';
+      case 'warehouseman': return language === 'uz' ? 'Omborxonachi' : 'Кладовщик';
     }
   };
 
   const getRoleIcon = (role: UserRole) => {
     switch (role) {
       case 'salesperson': return <UserCheck className="h-4 w-4" />;
-      case 'admin': return <Shield className="h-4 w-4" />;
+      case 'cashier': return <Shield className="h-4 w-4" />;
       case 'manager': return <UserCog className="h-4 w-4" />;
+      case 'warehouseman': return <UserCog className="h-4 w-4" />;
     }
   };
 
   const getRoleColor = (role: UserRole) => {
     switch (role) {
       case 'salesperson': return 'text-green-600 dark:text-green-400';
-      case 'admin': return 'text-purple-600 dark:text-purple-400';
+      case 'cashier': return 'text-purple-600 dark:text-purple-400';
+      case 'warehouseman': return 'text-purple-600 dark:text-purple-400';
       case 'manager': return 'text-blue-600 dark:text-blue-400';
     }
   };
@@ -343,8 +347,9 @@ export const UsersPage: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="salesperson">{t('salesperson')}</SelectItem>
-                    <SelectItem value="admin">{t('admin')}</SelectItem>
+                    <SelectItem value="cashier">{t('cashier')}</SelectItem>
                     <SelectItem value="manager">{t('manager')}</SelectItem>
+                    <SelectItem value="warehouseman">{t('warehouseman')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

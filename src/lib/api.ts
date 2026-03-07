@@ -622,6 +622,21 @@ export const orderApi = {
       method: 'DELETE',
     });
   },
+
+  accept: (id: number): Promise<ApiOrder> => {
+    return apiRequest(`/order/order/${id}/accept/`, {
+      method: 'POST',
+    });
+  },
+
+  // Cancel order with optional description
+  cancel: (id: number, description?: string): Promise<ApiOrder> => {
+    const body = description ? { description } : {};
+    return apiRequest(`/order/order/${id}/cancel/`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 // api.ts ga qo'shamiz

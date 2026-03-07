@@ -12,6 +12,8 @@ export const translations = {
     salesperson: 'Sotuvchi',
     admin: 'Administrator',
     manager: 'Menejer',
+    cashier: "Kassir",
+    warehouseman: 'Omborxonachi',
     
     // Navigation
     dashboard: 'Boshqaruv paneli',
@@ -185,6 +187,8 @@ export const translations = {
     salesperson: 'Продавец',
     admin: 'Администратор',
     manager: 'Менеджер',
+    cashier: "Касса",
+    warehouseman: 'Кладовщик',
     
     // Navigation
     dashboard: 'Панель управления',

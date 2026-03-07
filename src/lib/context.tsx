@@ -315,10 +315,12 @@ const [isFetchingSupplierStats, setIsFetchingSupplierStats] = useState(false);
       switch (role?.toLowerCase()) {
         case "s":
           return "salesperson";
-        case "a":
-          return "admin";
+        case "c":
+          return "cashier";
         case "m":
           return "manager";
+        case "w":
+          return "warehouseman";
         default:
           console.warn("Unknown role:", role, "defaulting to salesperson");
           return "salesperson";
@@ -448,14 +450,16 @@ const fetchDailyStats = useCallback(async (date?: string) => {
   const mapUserToApiData = (
     userData: Omit<User, "id" | "createdAt">,
   ): CreateUserData => {
-    const mapAppRole = (role: UserRole): "s" | "a" | "m" => {
+    const mapAppRole = (role: UserRole): "s" | "c" | "m" | "w" => {
       switch (role) {
         case "salesperson":
           return "s";
-        case "admin":
-          return "a";
+        case "cashier":
+          return "c";
         case "manager":
           return "m";
+        case "warehouseman":
+          return "w";
         default:
           return "s";
       }
@@ -615,10 +619,12 @@ const mapSupplierToApiData = (supplierData: Omit<Supplier, 'id' | 'createdAt' | 
       switch (role?.toLowerCase()) {
         case "s":
           return "salesperson";
-        case "a":
-          return "admin";
+        case "c":
+          return "cashier";
         case "m":
           return "manager";
+        case "w":
+          return "warehouseman";
         default:
           return "salesperson";
       }
@@ -1557,11 +1563,13 @@ const fetchProducts = useCallback(async (filters?: ProductFilters) => {
           case "salesperson":
             apiData.role = "s";
             break;
-          case "admin":
-            apiData.role = "a";
+          case "cashier":
+            apiData.role = "c";
             break;
           case "manager":
             apiData.role = "m";
+          case "warehouseman":
+            apiData.role = "w";
             break;
         }
       }
